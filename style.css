@@ -1,0 +1,371 @@
+/* 🌈 按钮 */
+#realworld-button {
+  position: fixed;
+  top: 10px;
+  right: 10px;
+  z-index: 99999;
+  background-color: transparent; /* 透明背景 */
+  
+  border-radius: 50%;
+  width: 40px;
+  height: 40px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 22px;
+  cursor: pointer;
+  box-shadow: 0 2px 5px rgba(0, 0, 0, 0.2);
+  transition: transform 0.2s ease, box-shadow 0.2s ease;
+}
+
+#realworld-button:hover {
+  transform: scale(1.1);
+  box-shadow: 0 4px 10px rgba(0, 0, 0, 0.3);
+  background-color: rgba(0, 0, 0, 0.05); /* hover时轻微背景 */
+}
+
+/* 主面板 */
+#realworld-panel {
+  position: fixed;
+  top: 60px;
+  right: 20px;
+  width: 380px;
+  height: 520px;
+  background: #fafafa;
+  border: 1px solid #000; /* 黑色边框 */
+  border-radius: 12px;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.25);
+  display: flex;
+  flex-direction: column;
+  z-index: 99998;
+  font-family: "Segoe UI", sans-serif;
+  overflow: visible !important;
+  position: fixed !important;
+  transform: none !important;
+  z-index: 9999 !important;
+  color: #000; /* 默认文字黑色 */
+}
+
+.rw-header {
+  display: flex;
+  justify-content: space-between;
+  padding: 10px 14px;
+  border-bottom: 1px solid #000; /* 黑色边框 */
+  color: #000; /* 黑色文字 */
+}
+
+.rw-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 8px;
+  padding: 10px;
+}
+
+.rw-btn {
+  background: transparent; /* 透明背景 */
+  border: 1px solid #000; /* 黑色边框 */
+  border-radius: 8px;
+  text-align: center;
+  padding: 8px 0;
+  font-size: 13px;
+  cursor: pointer;
+  transition: all 0.2s;
+  color: #000; /* 黑色文字 */
+}
+
+.rw-btn:hover {
+  background: rgba(0, 0, 0, 0.1); /* hover时轻微背景 */
+  transform: scale(1.03);
+}
+
+/* 内容区 */
+.rw-subpanel {
+  flex: 1;
+  padding: 10px;
+  overflow-x: visible !important;
+  overflow-y: auto;
+  border-top: 1px solid #000; /* 黑色边框 */
+  border-bottom: 1px solid #000; /* 黑色边框 */
+  position: relative;
+  color: #000; /* 黑色文字 */
+}
+
+.rw-panel {
+  position: relative;
+  overflow: visible !important;
+}
+
+.rw-small {
+  color: #000; /* 黑色文字 */
+  font-size: 13px;
+  text-align: center;
+  margin-top: 40px;
+}
+
+/* 调试面板 */
+.rw-debug {
+  background: #f0f0f0; /* 浅灰背景 */
+  color: #000; /* 黑色文字 */
+  font-size: 12px;
+  border-radius: 0 0 12px 12px;
+  padding: 6px 8px;
+  height: 100px;
+  overflow-y: auto;
+  border: 1px solid #000; /* 黑色边框 */
+}
+
+.rw-debug-header {
+  font-weight: bold;
+  color: #000; /* 黑色文字 */
+  margin-bottom: 4px;
+}
+
+.rw-log div {
+  margin: 2px 0;
+  white-space: pre-wrap;
+  color: #000; /* 黑色文字 */
+}
+
+/* 通用输入 */
+.rw-label {
+  display: block;
+  font-size: 13px;
+  font-weight: 500;
+  margin-top: 8px;
+  color: #000; /* 黑色文字 */
+}
+
+.rw-input {
+  width: 100%;
+  padding: 6px 8px;
+  font-size: 13px;
+  border: 1px solid #000; /* 黑色边框 */
+  border-radius: 6px;
+  margin-top: 4px;
+  transition: border 0.2s;
+  color: #000; /* 黑色文字 */
+  background: transparent; /* 透明背景 */
+}
+
+.rw-input:focus {
+  border-color: #000; /* 黑色边框 */
+  outline: none;
+  background: rgba(0, 0, 0, 0.05); /* focus时轻微背景 */
+}
+
+.rw-tip {
+  font-size: 12px;
+  color: #000; /* 黑色文字 */
+  margin-top: 8px;
+}
+
+/* --- 地图展示面板样式 --- */
+.rw-row {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: 6px;
+  overflow: visible !important;
+  z-index: 10001;
+}
+
+.rw-btn-mini {
+  background: transparent; /* 透明背景 */
+  border: 1px solid #000; /* 黑色边框 */
+  border-radius: 6px;
+  padding: 4px 8px;
+  cursor: pointer;
+  font-size: 14px;
+  transition: all 0.2s;
+  z-index: 1;
+  color: #000; /* 黑色文字 */
+}
+
+.rw-btn-mini:hover {
+  background: rgba(0, 0, 0, 0.1); /* hover时轻微背景 */
+}
+
+.rw-info-row {
+  display: flex;
+  justify-content: space-between;
+  margin-top: 6px;
+  font-size: 13px;
+  color: #000; /* 黑色文字 */
+  background: rgba(0, 0, 0, 0.05); /* 轻微背景 */
+  padding: 6px;
+  border-radius: 6px;
+  border: 1px solid #000; /* 黑色边框 */
+}
+
+.rw-tags {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+  margin-top: 6px;
+}
+
+.rw-tag {
+  background: transparent; /* 透明背景 */
+  color: #000; /* 黑色文字 */
+  font-size: 12px;
+  padding: 3px 8px;
+  border-radius: 6px;
+  cursor: pointer;
+  transition: all 0.2s;
+  border: 1px solid #000; /* 黑色边框 */
+}
+
+.rw-tag:hover {
+  background: rgba(0, 0, 0, 0.1); /* hover时轻微背景 */
+}
+
+.rw-map {
+  margin-top: 8px;
+  height: 180px;
+  background: rgba(0, 0, 0, 0.05); /* 轻微背景 */
+  border: 1px solid #000; /* 黑色边框 */
+  border-radius: 8px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #000; /* 黑色文字 */
+  font-size: 14px;
+}
+
+/* 弹出信息框 */
+.rw-search-popup {
+  position: absolute;
+  bottom: -70px;
+  left: 0;
+  right: 0;
+  height: 70px;
+  background: rgba(255,255,255,0.95);
+  border-top: 1px solid #000; /* 黑色边框 */
+  padding: 8px 12px;
+  box-shadow: 0 -2px 8px rgba(0,0,0,0.2);
+  transition: bottom 0.3s ease;
+  z-index: 1000;
+  color: #000; /* 黑色文字 */
+}
+
+.rw-search-popup.show {
+  bottom: 0;
+}
+
+.rw-popup-name {
+  font-weight: bold;
+  font-size: 14px;
+  color: #000; /* 黑色文字 */
+}
+
+.rw-popup-address {
+  font-size: 12px;
+  color: #000; /* 黑色文字 */
+}
+
+.hidden {
+  display: none;
+}
+
+#rw-search-input {
+  flex: 1;
+  position: relative;
+  z-index: 10002;
+}
+
+/* ✅ 自动补全浮层修复核心 */
+.amap-sug-result {
+  position: fixed !important;
+  z-index: 999999 !important;
+  background: #fff !important;
+  border: 1px solid #000 !important; /* 黑色边框 */
+  border-radius: 6px !important;
+  max-height: 300px !important;
+  overflow-y: auto !important;
+  box-shadow: 0 4px 10px rgba(0,0,0,0.25) !important;
+  padding: 4px 0 !important;
+}
+
+.amap-sug-item {
+  padding: 10px 12px !important;
+  cursor: pointer !important;
+  font-size: 13px !important;
+  border-bottom: 1px solid #000 !important; /* 黑色边框 */
+  color: #000 !important; /* 黑色文字 */
+}
+
+.amap-sug-item:hover {
+  background-color: rgba(0, 0, 0, 0.1) !important; /* hover时轻微背景 */
+}
+
+/* 防止被ST主容器overflow裁剪 */
+.amap-ui-poi-picker-sugg-container {
+  position: fixed !important;
+  z-index: 999999 !important;
+}
+
+/* 再兜底一层防裁剪 */
+#realworld-panel, .rw-panel, .rw-subpanel {
+  overflow: visible !important;
+}
+
+.rw-tag-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  margin-top: 4px;
+  font-size: 12px;
+}
+
+.rw-tag-item {
+  background: transparent; /* 透明背景 */
+  border-radius: 12px;
+  padding: 2px 8px;
+  cursor: pointer;
+  transition: all 0.2s;
+  user-select: none;
+  border: 1px solid #000; /* 黑色边框 */
+  color: #000; /* 黑色文字 */
+}
+
+.rw-tag-item.active {
+  background: #000; /* 黑色背景 */
+  color: #fff; /* 白色文字保持对比 */
+}
+
+#rw-del-mode.active {
+  background: #000; /* 黑色背景 */
+  color: #fff; /* 白色文字保持对比 */
+}
+/* 弹出窗口操作栏 */
+.rw-popup-actions {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-top: 8px;
+  padding: 4px 0;
+  border-top: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.rw-popup-btn {
+  background: none;
+  border: 1px solid rgba(255, 255, 255, 0.3);
+  border-radius: 4px;
+  padding: 4px 8px;
+  cursor: pointer;
+  font-size: 16px;
+  transition: all 0.2s;
+}
+
+.rw-popup-btn:hover {
+  background: rgba(255, 255, 255, 0.1);
+  border-color: rgba(255, 255, 255, 0.5);
+  transform: scale(1.1);
+}
+
+.rw-popup-distance {
+  color: #aaa;
+  font-size: 12px;
+  font-weight: bold;
+}

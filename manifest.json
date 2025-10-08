@@ -1,0 +1,9 @@
+{
+  "display_name": "RealWorld",
+  "name": "realworld",
+  "loading_order": 1000,
+  "js": "index.js",
+  "css": "style.css",
+  "author": "宗改自@shiyue137",
+  "version": "0.0.1"
+}
