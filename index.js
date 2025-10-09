@@ -343,8 +343,7 @@ log("[RealWorld] 扩展加载成功。");
   }
 
   locateBtn.addEventListener("click", initLocation);
-  searchBtn.addEventListener("click", () => performSearch(searchInput.value));
-
+  
   function initializeGaodeServices(inputElement) {
     const AMap = window.AMap;
     autoComplete = new AMap.AutoComplete({
@@ -861,64 +860,127 @@ smartSearchBtn.addEventListener("click", () => {
   }
 
   const keyword = searchInput.value.trim();
-  let query = "";
+  // 获取用户设置的搜索半径
+  const searchRadius = parseInt(localStorage.getItem('rw_search_radius') || '2000');
 
   if (keyword) {
-    // 组合输入 + 标签
-    query = `${keyword} 附近 ${enabledTags.join(" ")}`;
-  } else {
-    // 无输入则使用当前位置
-    const cached = loadState();
-    const locationBase = cached.address ? cached.address : "当前位置";
-    query = `${locationBase} 附近 ${enabledTags.join(" ")}`;
-  }
+    // 先搜索输入的地点，获取坐标后再搜索周边
+    placeSearch.search(keyword, (status, result) => {
+      if (status === "complete" && result.poiList && result.poiList.pois.length > 0) {
+        const centerPoi = result.poiList.pois[0];
+        const centerPos = centerPoi.location;
 
-  log(`[RealWorld] 🤔 智能搜索：${query}`);
-  performSearch(query);
+        // 以找到的地点为中心搜索周边
+        const nearbyQuery = enabledTags.join(" ");
+        placeSearch.searchNearBy(nearbyQuery, centerPos, searchRadius, (nearbyStatus, nearbyResult) => {
+          if (nearbyStatus === "complete" && nearbyResult.poiList && nearbyResult.poiList.pois.length > 0) {
+            // 显示中心点
+            if (mainMarker) mainMarker.setMap(null);
+            mainMarker = new AMap.Marker({
+              position: centerPos,
+              map: map,
+              title: centerPoi.name
+            });
+
+            // 显示第一个搜索结果
+            const firstPoi = nearbyResult.poiList.pois[0];
+            map.setCenter(firstPoi.location);
+            map.setZoom(16);  // 保持原来的缩放级别
+
+            popupName.textContent = `找到${nearbyResult.poiList.pois.length}个结果`;
+            popupAddress.textContent = `最近：${firstPoi.name}`;
+            popup.classList.add("show");
+
+            setTimeout(() => {
+              popup.classList.remove("show");
+            }, 3000);
+
+            log(`[RealWorld] 在${centerPoi.name}附近${searchRadius}米内找到${nearbyResult.poiList.pois.length}个结果`);
+          } else {
+            log(`[RealWorld] 在${centerPoi.name}附近${searchRadius}米内未找到相关结果`);
+          }
+        });
+      } else {
+        log(`[RealWorld] 未找到地点：${keyword}`);
+      }
+    });
+  } else {
+    // 使用当前位置搜索周边
+    const cached = loadState();
+    if (cached.lng && cached.lat) {
+      const currentPos = new AMap.LngLat(cached.lng, cached.lat);
+      const nearbyQuery = enabledTags.join(" ");
+
+      placeSearch.searchNearBy(nearbyQuery, currentPos, searchRadius, (status, result) => {
+        if (status === "complete" && result.poiList && result.poiList.pois.length > 0) {
+          const firstPoi = result.poiList.pois[0];
+          map.setCenter(firstPoi.location);
+          map.setZoom(16);  // 保持原来的缩放级别
+
+          popupName.textContent = `找到${result.poiList.pois.length}个结果`;
+          popupAddress.textContent = `最近：${firstPoi.name}`;
+          popup.classList.add("show");
+
+          setTimeout(() => {
+            popup.classList.remove("show");
+          }, 3000);
+
+          log(`[RealWorld] 在当前位置附近${searchRadius}米内找到${result.poiList.pois.length}个结果`);
+        } else {
+          log("[RealWorld] 在当前位置附近未找到相关结果");
+        }
+      });
+    } else {
+      log("[RealWorld] 请先定位当前位置");
+    }
+  }
 });
+
 
 // 初始化时渲染标签
 renderTags();
 
-  async function performSearch(keyword) {
-    if (!keyword || !placeSearch) {
-      log("[RealWorld] 搜索关键词为空或搜索服务未初始化");
-      return;
-    }
-
-    log(`[RealWorld] 执行搜索：${keyword}`);
-
-    placeSearch.search(keyword, (status, result) => {
-      if (status === "complete" && result.poiList && result.poiList.pois.length > 0) {
-        const poi = result.poiList.pois[0];
-        const position = poi.location;
-
-        map.setCenter(position);
-        map.setZoom(16);
-
-        if (mainMarker) mainMarker.setMap(null);
-        mainMarker = new AMap.Marker({
-          position: position,
-          map: map,
-          title: poi.name
-        });
-
-        searchInput.value = poi.name;
-
-        popupName.textContent = poi.name;
-        popupAddress.textContent = poi.address || "";
-        popup.classList.add("show");
-
-        setTimeout(() => {
-          popup.classList.remove("show");
-        }, 3000);
-      } else {
-        popup.classList.remove("show");
-        log(`[RealWorld] 未找到"${keyword}"相关结果`);
-      }
-    });
+async function performSearch(keyword) {
+  if (!keyword || !placeSearch) {
+    log("[RealWorld] 搜索关键词为空或搜索服务未初始化");
+    return;
   }
+
+  log(`[RealWorld] 执行搜索：${keyword}`);
+
+  placeSearch.search(keyword, (status, result) => {
+    if (status === "complete" && result.poiList && result.poiList.pois.length > 0) {
+      const poi = result.poiList.pois[0];
+      const position = poi.location;
+
+      map.setCenter(position);
+      map.setZoom(16);
+
+      if (mainMarker) mainMarker.setMap(null);
+      mainMarker = new AMap.Marker({
+        position: position,
+        map: map,
+        title: poi.name
+      });
+
+      searchInput.value = poi.name;
+
+      popupName.textContent = poi.name;
+      popupAddress.textContent = poi.address || "";
+      popup.classList.add("show");
+
+      setTimeout(() => {
+        popup.classList.remove("show");
+      }, 3000);
+    } else {
+      popup.classList.remove("show");
+      log(`[RealWorld] 未找到"${keyword}"相关结果`);
+    }
+  });
 }
+
+}
+
   function loadAPIPanel(container) {
     const cfg = extension_settings[MODULE_NAME].apiConfig || {};
     container.innerHTML = `
@@ -959,6 +1021,19 @@ renderTags();
         <span>当前消息数：<span id="rw-current-msg">0</span></span>
         <span>预计消息数：<span id="rw-expected-msg">0</span></span>
       </div>
+      
+      <!-- 新增：搜索半径和结果数量设置 -->
+      <div class="rw-row" style="gap: 8px; align-items: center; margin-top: 8px;">
+        <label style="white-space: nowrap;">搜索半径：</label>
+        <input type="number" id="rw-search-radius" class="rw-input" placeholder="2000" style="width:80px;" min="100" max="10000" value="${localStorage.getItem('rw_search_radius') || 2000}">
+        <span>米</span>
+      </div>
+      
+      <div class="rw-row" style="gap: 8px; align-items: center; margin-top: 8px;">
+        <label style="white-space: nowrap;">最大结果：</label>
+        <input type="number" id="rw-max-results" class="rw-input" placeholder="10" style="width:80px;" min="1" max="50" value="${localStorage.getItem('rw_max_results') || 10}">
+        <span>条</span>
+      </div>
     </div>
   `;
 
@@ -967,7 +1042,21 @@ renderTags();
   const addNumberInput = container.querySelector("#rw-add-number");
   const currentMsgSpan = container.querySelector("#rw-current-msg");
   const expectedMsgSpan = container.querySelector("#rw-expected-msg");
+  
+  // 新增：获取搜索半径和最大结果输入框
+  const searchRadiusInput = container.querySelector("#rw-search-radius");
+  const maxResultsInput = container.querySelector("#rw-max-results");
 
+  // 保存搜索半径和最大结果数到 localStorage
+  searchRadiusInput.addEventListener("input", () => {
+    localStorage.setItem("rw_search_radius", searchRadiusInput.value);
+    log(`[RealWorld] 搜索半径已更新为 ${searchRadiusInput.value} 米`);
+  });
+
+  maxResultsInput.addEventListener("input", () => {
+    localStorage.setItem("rw_max_results", maxResultsInput.value);
+    log(`[RealWorld] 最大结果数已更新为 ${maxResultsInput.value} 条`);
+  });
   // 自动更新状态
   let autoUpdateActive = false;
   let expectedCount = 0;
@@ -1087,12 +1176,13 @@ ${air}
       return;
     }
 
-    const placeSearch = new window.AMap.PlaceSearch({
-      pageSize: 10,
-      pageIndex: 1,
-      city: cached.city || "全国",
-      extensions: "all"
-    });
+    const maxResults = parseInt(localStorage.getItem('rw_max_results') || '10');
+const placeSearch = new window.AMap.PlaceSearch({
+  pageSize: maxResults,  // 使用动态值
+  pageIndex: 1,
+  city: cached.city || "全国",
+  extensions: "all"
+});
 
     // 处理每个启用的标签
     for (const tag of enabledTags) {
@@ -1181,7 +1271,8 @@ ${air}
 
         await new Promise((resolve, reject) => {
           // 使用周边搜索而不是关键字搜索
-          placeSearch.searchNearBy(searchQuery, [lng, lat], 2000, (status, result) => {
+          const searchRadius = parseInt(localStorage.getItem('rw_search_radius') || '2000');
+placeSearch.searchNearBy(searchQuery, [lng, lat], searchRadius, (status, result) => {
             log(`[RealWorld] 搜索状态：${status}`);
 
             if (status === "complete" && result.poiList && result.poiList.pois.length > 0) {
