@@ -1370,78 +1370,165 @@ placeSearch.searchNearBy(searchQuery, [lng, lat], searchRadius, (status, result)
   }
 
   // 切换自动更新状态
-  function toggleAutoUpdate(forceState) {
-    // 如果传入 forceState（true/false），就用它，否则切换当前状态
+  // 切换自动更新状态
+function toggleAutoUpdate(forceState) {
     autoUpdateActive = typeof forceState === 'boolean' ? forceState : !autoUpdateActive;
     localStorage.setItem(AUTO_MODE_KEY, autoUpdateActive ? '1' : '0');
-
+    
     autoUpdateBtn.textContent = autoUpdateActive ? "停止自动" : "自动更新";
     autoUpdateBtn.style.backgroundColor = autoUpdateActive ? "#f44336" : "";
-
+    
     if (autoUpdateActive) {
-      console.log("[RealWorld] 自动更新模式已开启");
-
-      // 立刻更新一次
-      updateWorldLocationEntry().then(() => {
-        // 计算预计消息数
-        const ctx = globalThis.SillyTavern.getContext();
-        lastMessageCount = ctx?.chat?.length || 0;
-        const addValue = parseInt(addNumberInput.value) || 0;
-        expectedCount = lastMessageCount + addValue;
+        console.log("[RealWorld] 自动更新模式已开启");
+        
+        // 立刻更新一次
+        updateWorldLocationEntry().then(() => {
+            // 计算预计消息数
+            const ctx = globalThis.SillyTavern.getContext();
+            lastMessageCount = ctx?.chat?.length || 0;
+            const addValue = parseInt(addNumberInput.value) || 0;
+            expectedCount = lastMessageCount + addValue;
+            refreshMessageCounts();
+        });
+        
+        // 设置观察器
+        autoObserver = new MutationObserver((mutations) => {
+            // 添加延迟确保消息已完全加载
+            setTimeout(() => {
+                const ctx = globalThis.SillyTavern.getContext();
+                if (!ctx || !Array.isArray(ctx.chat)) {
+                    console.log("[RealWorld] 无法获取聊天上下文");
+                    return;
+                }
+                
+                const currentCount = ctx.chat.length;
+                
+                // 更新当前消息数显示
+                currentMsgSpan.textContent = currentCount;
+                
+                // 检测到新消息
+                if (currentCount > lastMessageCount) {
+                    console.log(`[RealWorld] 检测到消息变化，从 ${lastMessageCount} 到 ${currentCount}`);
+                    
+                    const newMsg = ctx.chat[currentCount - 1];
+                    lastMessageCount = currentCount;
+                    
+                    // 打印消息信息用于调试
+                    console.log("[RealWorld] 新消息信息:", {
+                        is_user: newMsg?.is_user,
+                        is_name: newMsg?.is_name, 
+                        is_system: newMsg?.is_system,
+                        name: newMsg?.name,
+                        mes: newMsg?.mes?.substring(0, 50) + "..."
+                    });
+                    
+                    // 检查是否是AI消息（多种判断方式）
+                    const isAIMessage = newMsg && (
+                        newMsg.is_user === false || 
+                        newMsg.is_name === false ||
+                        (!newMsg.is_user && !newMsg.is_system) ||
+                        (newMsg.name && newMsg.name !== 'You' && newMsg.name !== ctx.name1)
+                    ) && newMsg.mes;
+                    
+                    if (isAIMessage) {
+                        console.log(`[RealWorld] 检测到新AI消息，当前: ${currentCount}, 预计: ${expectedCount}`);
+                        
+                        // 检查是否达到预计消息数
+                        if (currentCount >= expectedCount) {
+                            console.log("[RealWorld] 达到预计消息数，执行更新");
+                            
+                            updateWorldLocationEntry().then(() => {
+                                // 重新计算下一个预计消息数
+                                const addValue = parseInt(addNumberInput.value) || 0;
+                                expectedCount = currentCount + addValue;
+                                expectedMsgSpan.textContent = expectedCount;
+                                console.log(`[RealWorld] 更新完成，下次预计消息数: ${expectedCount}`);
+                            }).catch(err => {
+                                console.error("[RealWorld] 自动更新失败:", err);
+                            });
+                        }
+                    } else {
+                        console.log("[RealWorld] 不是AI消息，跳过");
+                    }
+                }
+            }, 100); // 100ms 延迟
+        });
+        
+        // 监听多个可能的容器
+        const containers = [
+            document.getElementById('chat'),
+            document.querySelector('#chat'),
+            document.querySelector('.chat-container'),
+            document.querySelector('[id*="chat"]')
+        ].filter(Boolean);
+        
+        if (containers.length > 0) {
+            const targetContainer = containers[0];
+            console.log("[RealWorld] 监听容器:", targetContainer);
+            
+            autoObserver.observe(targetContainer, {
+                childList: true,
+                subtree: true,
+                attributes: true,
+                attributeFilter: ['class', 'data-*']
+            });
+        } else {
+            console.error('[RealWorld] 未找到聊天容器，无法自动化');
+            alert("⚠️ 未找到聊天容器，自动更新功能可能无法正常工作");
+        }
+        
+    } else {
+        console.log("[RealWorld] 自动更新模式已关闭");
+        if (autoObserver) {
+            autoObserver.disconnect();
+            autoObserver = null;
+        }
         refreshMessageCounts();
-      });
+    }
+}
 
-      // 设置观察器
-      autoObserver = new MutationObserver(() => {
+// 添加一个辅助函数来定期检查消息数（作为备用方案）
+let checkInterval = null;
+
+function startIntervalCheck() {
+    if (checkInterval) clearInterval(checkInterval);
+    
+    checkInterval = setInterval(() => {
+        if (!autoUpdateActive) {
+            clearInterval(checkInterval);
+            return;
+        }
+        
         const ctx = globalThis.SillyTavern.getContext();
         if (!ctx || !Array.isArray(ctx.chat)) return;
-
+        
         const currentCount = ctx.chat.length;
-
-        // 更新当前消息数显示
         currentMsgSpan.textContent = currentCount;
-
-        // 检测到新消息
+        
         if (currentCount > lastMessageCount) {
-          const newMsg = ctx.chat[currentCount - 1];
-          lastMessageCount = currentCount;
-
-          // 只在 AI 消息时检查是否达到预计数
-          if (newMsg && !newMsg.is_user && newMsg.mes) {
-            console.log(`[RealWorld] 检测到新AI消息，当前: ${currentCount}, 预计: ${expectedCount}`);
-
-            // 检查是否达到预计消息数
+            console.log(`[RealWorld] (定时检查) 消息数变化: ${lastMessageCount} -> ${currentCount}`);
+            lastMessageCount = currentCount;
+            
             if (currentCount >= expectedCount) {
-              console.log("[RealWorld] 达到预计消息数，执行更新");
-
-              updateWorldLocationEntry().then(() => {
-                // 重新计算下一个预计消息数
-                const addValue = parseInt(addNumberInput.value) || 0;
-                expectedCount = currentCount + addValue;
-                expectedMsgSpan.textContent = expectedCount;
-              });
+                console.log("[RealWorld] (定时检查) 达到预计消息数，执行更新");
+                updateWorldLocationEntry().then(() => {
+                    const addValue = parseInt(addNumberInput.value) || 0;
+                    expectedCount = currentCount + addValue;
+                    expectedMsgSpan.textContent = expectedCount;
+                });
             }
-          }
         }
-      });
+    }, 1000); // 每秒检查一次
+}
 
-      // 监听聊天容器
-      const chatContainer = document.getElementById('chat');
-      if (chatContainer) {
-        autoObserver.observe(chatContainer, { childList: true, subtree: true });
-      } else {
-        console.warn('[RealWorld] 未找到聊天容器 #chat，无法自动化');
-      }
-
-    } else {
-      console.log("[RealWorld] 自动更新模式已关闭");
-      if (autoObserver) {
-        autoObserver.disconnect();
-        autoObserver = null;
-      }
-      refreshMessageCounts();
-    }
-  }
+// 修改 toggleAutoUpdate 函数，在开启自动更新时也启动定时检查
+// 在 if (autoUpdateActive) 块的末尾添加：
+if (autoUpdateActive) {
+    // ... 现有代码 ...
+    
+    // 启动定时检查作为备用
+    startIntervalCheck();
+}
 
   // 事件监听
   updateNowBtn.addEventListener("click", updateWorldLocationEntry);
