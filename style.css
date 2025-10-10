@@ -28,8 +28,10 @@
 #realworld-panel {
   position: fixed;
   top: 60px;
-  right: 20px;
-  width: 380px;
+  left: 50%;
+  transform: translateX(-50%) !important; /* 水平居中 */
+  width: 95%; /* 移动端宽度95% */
+  max-width: 380px; /* 桌面端最大宽度限制 */
   height: 520px;
   background: #fafafa;
   border: 1px solid #000; /* 黑色边框 */
@@ -41,7 +43,6 @@
   font-family: "Segoe UI", sans-serif;
   overflow: visible !important;
   position: fixed !important;
-  transform: none !important;
   z-index: 9999 !important;
   color: #000; /* 默认文字黑色 */
 }
