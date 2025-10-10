@@ -293,6 +293,7 @@ log("[RealWorld] 扩展加载成功。");
       </div>
       <div class="rw-row">
         <input type="text" id="rw-search-input" class="rw-input" placeholder="输入要搜索的地点">
+        <button id="rw-star-btn" class="rw-btn-mini">⭐</button>
         <button id="rw-search-btn" class="rw-btn-mini">🔍</button>
       </div>
       <div class="rw-row">
@@ -317,6 +318,128 @@ log("[RealWorld] 扩展加载成功。");
   const popup = container.querySelector("#rw-search-popup");
   const popupName = container.querySelector("#rw-popup-name");
   const popupAddress = container.querySelector("#rw-popup-address");
+  // === 新增：⭐ 按钮查询 ===
+const starBtn = container.querySelector("#rw-star-btn");
+
+// === 新增函数：添加到收藏 ===
+async function addToFavorites() {
+  const searchText = searchInput.value.trim();
+  if (!searchText) {
+    alert("请输入要收藏的地点！");
+    return;
+  }
+
+  try {
+    console.log(`[RealWorld] 添加收藏：${searchText}`);
+
+    // 动态导入 world-info.js
+    const moduleWI = await import('/scripts/world-info.js');
+
+    // 找到 realworld 世界书文件
+    const selected = moduleWI.selected_world_info || [];
+    let fileId = null;
+    for (const wi of selected) {
+      if (wi.includes("realworld")) {
+        fileId = wi;
+        break;
+      }
+    }
+    if (!fileId) {
+      console.warn("[RealWorld] 未找到 world-info 文件 realworld.json");
+      alert("未找到世界书文件 realworld.json");
+      return;
+    }
+
+    // 获取 SillyTavern API
+    const ctx = globalThis.SillyTavern.getContext();
+    const setEntry = ctx.SlashCommandParser.commands["setentryfield"];
+    const createEntry = ctx.SlashCommandParser.commands["createentry"];
+    if (!setEntry || !createEntry) {
+      throw new Error("SillyTavern API 未加载必要命令");
+    }
+
+    // 读取世界书内容
+    let worldInfo = await moduleWI.loadWorldInfo(fileId);
+    let entries = worldInfo.entries || {};
+    let favoritesUID = null;
+
+    // 查找 "收藏" 条目（通过 key、title 或 comment 匹配）
+    for (const id in entries) {
+      const entry = entries[id];
+      if (!entry.disable && 
+          (entry.key === "收藏" || 
+           entry.title === "收藏" || 
+           entry.comment?.includes("收藏") ||
+           entry.key?.includes("收藏") ||
+           entry.title?.includes("收藏"))) {
+        favoritesUID = entry.uid;
+        break;
+      }
+    }
+
+    let currentContent = "";
+    if (favoritesUID) {
+      // 已存在，读取当前内容
+      currentContent = entries[favoritesUID].content || "";
+    } else {
+      // 创建新条目
+      console.log("[RealWorld] 创建收藏条目");
+      await createEntry.callback({
+        file: fileId,
+        key: "收藏",
+        title: "收藏地点"
+      }, "");  // 初始为空
+
+      await new Promise(resolve => setTimeout(resolve, 1000));
+
+      // 重新加载并查找 UID
+      worldInfo = await moduleWI.loadWorldInfo(fileId);
+      entries = worldInfo.entries || {};
+      for (const id in entries) {
+        const entry = entries[id];
+        if (entry.key === "收藏" || entry.title === "收藏" || entry.key?.includes("收藏")) {
+          favoritesUID = entry.uid;
+          currentContent = entry.content || "";
+          break;
+        }
+      }
+    }
+
+    if (!favoritesUID) {
+      throw new Error("无法创建或找到收藏条目");
+    }
+
+    // 追加新内容（不清空旧内容）
+    const newEntry = `${new Date().toLocaleString()}\n📍 ${searchText}\n\n`;
+    const updatedContent = currentContent ? `${newEntry}${currentContent}` : newEntry;  // 新内容放顶部，旧的在下（或反之，根据需求调整）
+
+    // 更新条目
+    await setEntry.callback({
+      file: fileId,
+      uid: favoritesUID,
+      field: "content"
+    }, updatedContent);
+
+    log(`[RealWorld] 已添加到收藏：${searchText}`);
+    alert(`✅ "${searchText}" 已添加到世界书收藏！`);
+
+    // 可选：清空搜索框
+    searchInput.value = "";
+
+  } catch (error) {
+    console.error("[RealWorld] 添加收藏失败：", error);
+    alert("❌ 添加收藏失败：" + error.message);
+  }
+}
+
+// === 按钮绑定 ===
+starBtn.addEventListener("click", addToFavorites);
+
+// 可选：搜索按钮也能触发收藏（双击或长按），但按需求只绑定⭐
+// 如果需要 Enter 键触发搜索框收藏：
+// searchInput.addEventListener("keypress", (e) => {
+//   if (e.key === "Enter") addToFavorites();
+// });
 
   let map, mainMarker, autoComplete, placeSearch, currentCity = "";
 
