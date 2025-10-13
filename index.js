@@ -1,1410 +1,1625 @@
-import { extension_settings, getContext } from "../../../extensions.js";
-import { saveSettingsDebounced,saveChat } from "../../../../script.js";
+import { extension_settings, getContext, loadExtensionSettings } from "../../../extensions.js";
+import { saveSettingsDebounced } from "../../../../script.js";
 
 (function () {
-  const MODULE_NAME = 'pyq-creator';
+  const MODULE_NAME = "RealWorld";
 
-  // 等待 ST 环境准备
   function ready(fn) {
-    if (window.SillyTavern && SillyTavern.getContext) return fn();
-    const i = setInterval(() => {
-      if (window.SillyTavern && SillyTavern.getContext) {
-        clearInterval(i);
-        fn();
-      }
-    }, 200);
-    setTimeout(fn, 5000);
-  }
-
-  ready(() => {
-    try {
-      const ctx = SillyTavern.getContext();
-
-      // 初始化 extensionSettings 存储
-      if (!ctx.extensionSettings[MODULE_NAME]) {
-        ctx.extensionSettings[MODULE_NAME] = {
-          apiConfig: {},
-          prompts: [],
-          chatConfig: { strength: 5, regexList: [] },
-        };
-        if (ctx.saveSettingsDebounced) ctx.saveSettingsDebounced();
-      }
-
-      // 防重复
-      if (document.getElementById('star-fab')) return;
-
-     // 🌟按钮
-const fab = document.createElement('div');
-fab.id = 'star-fab';
-fab.title = MODULE_NAME;
-fab.innerText = '🌟';
-fab.style.position = 'fixed';
-
-// 如果有存储位置，用存储的位置；否则默认居中
-const savedTop = localStorage.getItem('starFabTop');
-const savedRight = localStorage.getItem('starFabRight');
-if (savedTop && savedRight) {
-  fab.style.top = savedTop;
-  fab.style.right = savedRight;
-} else {
-  const centerTop = (window.innerHeight / 2 - 16) + 'px';   // 32px按钮高度/2=16
-  const centerRight = (window.innerWidth / 2 - 16) + 'px';  // 32px按钮宽度/2=16
-  fab.style.top = centerTop;
-  fab.style.right = centerRight;
+  if (window.SillyTavern && SillyTavern.getContext) return fn();
+  const i = setInterval(() => {
+    if (window.SillyTavern && SillyTavern.getContext) {
+      clearInterval(i);
+      fn();
+    }
+  }, 200);
+  setTimeout(fn, 5000);
 }
 
-fab.style.zIndex = '99999';
-fab.style.cursor = 'grab';
-fab.style.userSelect = 'none';
-fab.style.fontSize = '22px';
-fab.style.lineHeight = '28px';
-fab.style.width = '32px';
-fab.style.height = '32px';
-fab.style.textAlign = 'center';
-fab.style.borderRadius = '50%';
-fab.style.background = 'transparent'; // 背景透明
-fab.style.boxShadow = 'none'; // 去掉阴影
-document.body.appendChild(fab);
+ready(() => {
+  try {
+    const ctx = SillyTavern.getContext();
 
-// 拖动逻辑
-(function enableFabDrag() {
-  let isDragging = false;
-  let startX, startY, startTop, startRight;
+    // 初始化设置
+    if (!ctx.extensionSettings[MODULE_NAME]) {
+      ctx.extensionSettings[MODULE_NAME] = {
+        apiConfig: { amapKey: "", amapSecret: "" },
+      };
+      if (ctx.saveSettingsDebounced) ctx.saveSettingsDebounced();
+    }
 
-  function onMove(e) {
-    if (!isDragging) return;
-    e.preventDefault();
+    // 防重复
+    if (document.getElementById("realworld-button")) return;
 
-    const clientX = e.touches ? e.touches[0].clientX : e.clientX;
-    const clientY = e.touches ? e.touches[0].clientY : e.clientY;
+    // 创建按钮
+    const btn = document.createElement("div");
+    btn.id = "realworld-button";
+    btn.title = "RealWorld 扩展";
+    btn.innerText = "🌈";
+    btn.classList.add("realworld-fab");
 
-    const dx = clientX - startX;
-    const dy = clientY - startY;
+    // 样式
+    Object.assign(btn.style, {
+      position: "fixed",
+      zIndex: 9999,
+      width: "32px",
+      height: "32px",
+      background: "transparent",
+      borderRadius: "50%",
+      display: "flex",
+      alignItems: "center",
+      justifyContent: "center",
+      cursor: "pointer",
+      boxShadow: "0 2px 6px rgba(0,0,0,0.3)",
+    });
 
-    // 计算新位置（右上角模式：改变 top 和 right）
-    let newTop = startTop + dy;
-    let newRight = startRight - dx;
+    // 恢复位置
+    const savedPosition = JSON.parse(localStorage.getItem("rw_button_position") || "null");
+    if (savedPosition) {
+      btn.style.left = savedPosition.left + "px";
+      btn.style.top = savedPosition.top + "px";
+    } else {
+      btn.style.left = (window.innerWidth / 2 - 25) + "px";
+      btn.style.top = (window.innerHeight / 2 - 25) + "px";
+    }
 
-    // 限制范围（不能拖出屏幕）
-    const maxTop = window.innerHeight - fab.offsetHeight;
-    const maxRight = window.innerWidth - fab.offsetWidth;
-    newTop = Math.max(0, Math.min(maxTop, newTop));
-    newRight = Math.max(0, Math.min(maxRight, newRight));
+    document.body.appendChild(btn);
 
-    fab.style.top = newTop + 'px';
-    fab.style.right = newRight + 'px';
+    // 拖动逻辑
+    let isDragging = false;
+    let dragStartX, dragStartY, buttonStartX, buttonStartY, hasMoved = false;
+
+    function startDrag(e) {
+      isDragging = true;
+      hasMoved = false;
+      const clientX = e.type.includes("touch") ? e.touches[0].clientX : e.clientX;
+      const clientY = e.type.includes("touch") ? e.touches[0].clientY : e.clientY;
+      dragStartX = clientX;
+      dragStartY = clientY;
+      const rect = btn.getBoundingClientRect();
+      buttonStartX = rect.left;
+      buttonStartY = rect.top;
+      btn.style.cursor = "grabbing";
+      btn.style.transition = "none";
+    }
+
+    function drag(e) {
+      if (!isDragging) return;
+      e.preventDefault();
+      const clientX = e.type.includes("touch") ? e.touches[0].clientX : e.clientX;
+      const clientY = e.type.includes("touch") ? e.touches[0].clientY : e.clientY;
+      const deltaX = clientX - dragStartX;
+      const deltaY = clientY - dragStartY;
+      if (Math.abs(deltaX) > 5 || Math.abs(deltaY) > 5) hasMoved = true;
+      let newX = buttonStartX + deltaX;
+      let newY = buttonStartY + deltaY;
+      newX = Math.max(0, Math.min(window.innerWidth - btn.offsetWidth, newX));
+      newY = Math.max(0, Math.min(window.innerHeight - btn.offsetHeight, newY));
+      btn.style.left = newX + "px";
+      btn.style.top = newY + "px";
+    }
+
+    function endDrag() {
+      if (!isDragging) return;
+      isDragging = false;
+      btn.style.cursor = "pointer";
+      btn.style.transition = "";
+      const rect = btn.getBoundingClientRect();
+      localStorage.setItem("rw_button_position", JSON.stringify({ left: rect.left, top: rect.top }));
+    }
+
+    btn.addEventListener("mousedown", startDrag);
+    document.addEventListener("mousemove", drag);
+    document.addEventListener("mouseup", endDrag);
+    btn.addEventListener("touchstart", startDrag);
+    document.addEventListener("touchmove", drag, { passive: false });
+    document.addEventListener("touchend", endDrag);
+
+  } catch (err) {
+    console.error("RealWorld init failed:", err);
   }
+});
+  function createPanel() {
+    const panel = document.createElement("div");
+    panel.id = "realworld-panel";
+    panel.innerHTML = `
+      
 
-  function onEnd() {
-    if (!isDragging) return;
-    isDragging = false;
-    fab.style.cursor = 'grab';
-    // 保存位置
-    localStorage.setItem('starFabTop', fab.style.top);
-    localStorage.setItem('starFabRight', fab.style.right);
-  }
+      <div class="rw-grid">
+        <div class="rw-btn" data-key="api">API 配置</div>
+        <div class="rw-btn" data-key="map">地图展示</div>
+        <div class="rw-btn" data-key="inject">注入设置</div>
+      </div>
 
-  function onStart(e) {
-    isDragging = true;
-    startX = e.touches ? e.touches[0].clientX : e.clientX;
-    startY = e.touches ? e.touches[0].clientY : e.clientY;
-    startTop = parseInt(fab.style.top, 10);
-    startRight = parseInt(fab.style.right, 10);
-    fab.style.cursor = 'grabbing';
-  }
+      <div id="rw-content-area" class="rw-subpanel">
+        <div class="rw-small">请选择一个功能</div>
+      </div>
 
-  // 绑定事件（PC + 手机）
-  fab.addEventListener('mousedown', onStart);
-  fab.addEventListener('touchstart', onStart);
-  document.addEventListener('mousemove', onMove);
-  document.addEventListener('touchmove', onMove, { passive: false });
-  document.addEventListener('mouseup', onEnd);
-  document.addEventListener('touchend', onEnd);
-})();
+      <div id="rw-debug" class="rw-debug">
+        <div class="rw-debug-header">调试面板</div>
+        <div id="rw-log" class="rw-log"></div>
+      </div>
+    `;
+    document.body.appendChild(panel);
+    
+    // 添加高德 AutoComplete 所需的 CSS 样式
+    if (!document.getElementById('amap-autocomplete-styles')) {
+  const style = document.createElement('style');
+  style.id = 'amap-autocomplete-styles';
+  style.textContent = `
+    /* 高德地图自动补全样式 */
+    .amap-sug-result {
+      z-index: 9999 !important;
+      position: absolute !important;
+      background-color: white !important;
+      border: 1px solid #000 !important; /* 黑色边框 */
+      border-top: none !important;
+      max-height: 300px !important;
+      overflow-y: auto !important;
+      box-shadow: 0 2px 6px rgba(0,0,0,0.3) !important;
+      color: #000 !important; /* 黑色文字 */
+    }
 
-      // 主面板
-      const panel = document.createElement('div');
-      panel.id = 'star-panel';
-      panel.innerHTML = `
-       
+    .amap-sug-item {
+      padding: 10px !important;
+      cursor: pointer !important;
+      border-bottom: 1px solid #000 !important; /* 黑色边框 */
+      color: #000 !important; /* 黑色文字 */
+    }
 
-        <div class="sp-grid">
-          <div class="sp-btn" data-key="api">API配置</div>
-          <div class="sp-btn" data-key="prompt">提示词配置</div>
-          <div class="sp-btn" data-key="chat">聊天配置</div>
-          <div class="sp-btn" data-key="worldbook">世界书配置</div>
-          <div class="sp-btn" data-key="gen">生成</div>
-        </div>
+    .amap-sug-item:hover {
+      background-color: rgba(0, 0, 0, 0.1) !important; /* hover时轻微背景 */
+      color: #000 !important; /* 确保hover时也是黑色文字 */
+    }
 
-        <div id="sp-content-area" class="sp-subpanel">
-          <div class="sp-small">请选择一个功能</div>
-        </div>
+    .amap_lib_placeSearch {
+      z-index: 9999 !important;
+      color: #000 !important; /* 黑色文字 */
+    }
 
-        <div id="sp-debug" class="sp-debug">[调试面板输出]</div>
-      `;
-      document.body.appendChild(panel);
+    .amap-ui-poi-picker-sugg-container {
+      z-index: 9999 !important;
+      color: #000 !important; /* 黑色文字 */
+    }
 
-      // fab点击展开/关闭
-      fab.addEventListener('click', () => {
-        panel.style.display = panel.style.display === 'block' ? 'none' : 'block';
+    /* 确保所有子元素也是黑色文字 */
+    .amap-sug-result * {
+      color: #000 !important;
+    }
+  `;
+  document.head.appendChild(style);
+}
+
+
+    panel.querySelectorAll(".rw-btn").forEach((btn) => {
+      btn.addEventListener("click", () => {
+        const key = btn.dataset.key;
+        loadSubPanel(key);
+        log(`切换到子面板：${key}`);
       });
+    });
 
-      // 简单保存函数
-      function saveSettings() {
-        if (ctx.saveSettingsDebounced) ctx.saveSettingsDebounced();
-        else console.warn('saveSettingsDebounced not available');
-      }
+    log("RealWorld 面板已创建");
+  }
 
-      // 调试输出
-      function debugLog(...args) {
-        const dbg = document.getElementById('sp-debug');
-        if (dbg) dbg.innerText = args.join(' ');
-        if (window.DEBUG_STAR_PANEL) console.log('[pyq-creator]', ...args);
-      }
+  function loadSubPanel(key) {
+    const content = document.getElementById("rw-content-area");
+    if (!content) return;
+    switch (key) {
+      case "api":
+        loadAPIPanel(content);
+        break;
+      case "map":
+        loadMapPanel(content);
+        break;
+      case "inject":
+  loadInjectPanel(content);
+  break;
+      default:
+        content.innerHTML = `<div><p>未知面板。</p></div>`;
+    }
+  }
 
-      // 主内容区
-      const content = panel.querySelector('#sp-content-area');
-
-      // 四个子面板的最小实现
-     function showApiConfig() {
-  const ctx = SillyTavern.getContext();
-  const content = document.getElementById("sp-content-area");
-
-  content.innerHTML = `
-    <div class="sp-section">
-      <label>API URL: <input type="text" id="api-url-input"></label><br>
-      <label>API Key: <input type="text" id="api-key-input"></label><br>
-      <label>模型: <select id="api-model-select"></select></label><br>
-      <button id="api-save-btn">保存配置</button>
-      <button id="api-test-btn">测试连接</button>
-      <button id="api-refresh-models-btn">刷新模型</button>
-      <div id="api-status" style="margin-top:6px;font-size:12px;color:lightgreen;"></div>
-      <pre id="api-debug" style="margin-top:6px;font-size:12px;color:yellow;white-space:pre-wrap;"></pre>
+  function loadMapPanel(container) {
+  container.innerHTML = `
+    <div class="rw-panel">
+      <div class="rw-row">
+        <input type="text" id="rw-location-display" class="rw-input" placeholder="当前地点..." readonly>
+        <button id="rw-locate-btn" class="rw-btn-mini">📍</button>
+      </div>
+      <div class="rw-info-row">
+        <span id="rw-weather">天气：--</span>
+        <span id="rw-temp">气温：--°C</span>
+        <span id="rw-air">空气质量：--</span>
+      </div>
+      <div class="rw-row">
+        <input type="text" id="rw-search-input" class="rw-input" placeholder="输入要搜索的地点">
+        <button id="rw-star-btn" class="rw-btn-mini">⭐</button>
+        <button id="rw-search-btn" class="rw-btn-mini">🔍</button>
+      </div>
+      <div class="rw-row">
+  <input type="text" id="rw-tag-input" class="rw-input" placeholder="输入标签">
+  <button id="rw-add-tag" class="rw-btn-mini">➕</button>
+  <button id="rw-del-mode" class="rw-btn-mini">🗑️</button>
+  <button id="rw-smart-search" class="rw-btn-mini">🤔</button>
+</div>
+<div id="rw-tag-list" class="rw-tag-list"></div>
+      <div id="rw-map" class="rw-map">地图加载中...</div>
+      <div id="rw-search-popup" class="rw-search-popup hidden">
+        <div id="rw-popup-name" class="rw-popup-name"></div>
+        <div id="rw-popup-address" class="rw-popup-address"></div>
+      </div>
     </div>
   `;
 
-  const modelSelect = document.getElementById("api-model-select");
-  const debugArea = document.getElementById("api-debug");
+  const locateBtn = container.querySelector("#rw-locate-btn");
+  const searchInput = container.querySelector("#rw-search-input");
+  const searchBtn = container.querySelector("#rw-search-btn");
+  const locInput = container.querySelector("#rw-location-display");
+  const popup = container.querySelector("#rw-search-popup");
+  const popupName = container.querySelector("#rw-popup-name");
+  const popupAddress = container.querySelector("#rw-popup-address");
+  // === 新增：⭐ 按钮查询 ===
+const starBtn = container.querySelector("#rw-star-btn");
 
-  function debugLog(title, data) {
-    console.log(title, data);
-    debugArea.textContent = `${title}:\n${typeof data === 'object' ? JSON.stringify(data, null, 2) : data}`;
+// === 新增函数：添加到收藏 ===
+async function addToFavorites() {
+  const searchText = searchInput.value.trim();
+  if (!searchText) {
+    alert("请输入要收藏的地点！");
+    return;
   }
-
-  // 初始化：加载本地存储
-  document.getElementById("api-url-input").value = localStorage.getItem("independentApiUrl") || "";
-  document.getElementById("api-key-input").value = localStorage.getItem("independentApiKey") || "";
-  const savedModel = localStorage.getItem("independentApiModel");
-
-  function populateModelSelect(models) {
-    modelSelect.innerHTML = "";
-    const uniq = Array.from(new Set(models || []));
-    uniq.forEach(m => {
-      const opt = document.createElement("option");
-      opt.value = m;
-      opt.textContent = m;
-      modelSelect.appendChild(opt);
-    });
-    if (savedModel) {
-      let existing = Array.from(modelSelect.options).find(o => o.value === savedModel);
-      if (existing) {
-        existing.textContent = savedModel + "（已保存）";
-        modelSelect.value = savedModel;
-      } else {
-        const opt = document.createElement("option");
-        opt.value = savedModel;
-        opt.textContent = savedModel + "（已保存）";
-        modelSelect.insertBefore(opt, modelSelect.firstChild);
-        modelSelect.value = savedModel;
-      }
-    } else if (modelSelect.options.length > 0) {
-      modelSelect.selectedIndex = 0;
-    }
-  }
-
-  const storedModelsRaw = localStorage.getItem("independentApiModels");
-  if (storedModelsRaw) {
-    try {
-      const arr = JSON.parse(storedModelsRaw);
-      if (Array.isArray(arr)) populateModelSelect(arr);
-    } catch {}
-  } else if (savedModel) {
-    const opt = document.createElement("option");
-    opt.value = savedModel;
-    opt.textContent = savedModel + "（已保存）";
-    modelSelect.appendChild(opt);
-    modelSelect.value = savedModel;
-  }
-
-  // 保存配置
-  document.getElementById("api-save-btn").addEventListener("click", () => {
-    const url = document.getElementById("api-url-input").value;
-    const key = document.getElementById("api-key-input").value;
-    const model = modelSelect.value;
-    if (!url || !key || !model) return alert("请完整填写API信息");
-
-    localStorage.setItem("independentApiUrl", url);
-    localStorage.setItem("independentApiKey", key);
-    localStorage.setItem("independentApiModel", model);
-
-    Array.from(modelSelect.options).forEach(o => {
-      if (o.value === model) o.textContent = model + "（已保存）";
-      else if (o.textContent.endsWith("（已保存）")) o.textContent = o.value;
-    });
-
-    document.getElementById("api-status").textContent = "已保存";
-    debugLog("保存API配置", { url, model });
-  });
-
-  // 测试连接
- // 测试连接（始终向模型发送 ping 并显示返回）
-document.getElementById("api-test-btn").addEventListener("click", async () => {
-  const urlRaw = document.getElementById("api-url-input").value || localStorage.getItem("independentApiUrl");
-  const key = document.getElementById("api-key-input").value || localStorage.getItem("independentApiKey");
-  const model = modelSelect.value || localStorage.getItem("independentApiModel");
-
-  if (!urlRaw || !key || !model) return alert("请完整填写API信息");
-
-  const baseUrl = urlRaw.replace(/\/$/, "");
-  document.getElementById("api-status").textContent = "正在向模型发送 ping ...";
-  debugLog("测试连接开始", { baseUrl, model });
 
   try {
-    const res = await fetch(`${baseUrl}/v1/chat/completions`, {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${key}`,
-        "Content-Type": "application/json"
-      },
-      body: JSON.stringify({
-        model,
-        messages: [{ role: "user", content: "ping" }],
-        max_tokens: 100
-      })
+    console.log(`[RealWorld] 添加收藏：${searchText}`);
+
+    // 动态导入 world-info.js
+    const moduleWI = await import('/scripts/world-info.js');
+
+    // 找到 realworld 世界书文件
+    const selected = moduleWI.selected_world_info || [];
+    let fileId = null;
+    for (const wi of selected) {
+      if (wi.includes("realworld")) {
+        fileId = wi;
+        break;
+      }
+    }
+    if (!fileId) {
+      console.warn("[RealWorld] 未找到 world-info 文件 realworld.json");
+      alert("未找到世界书文件 realworld.json");
+      return;
+    }
+
+    // 获取 SillyTavern API
+    const ctx = globalThis.SillyTavern.getContext();
+    const setEntry = ctx.SlashCommandParser.commands["setentryfield"];
+    const createEntry = ctx.SlashCommandParser.commands["createentry"];
+    if (!setEntry || !createEntry) {
+      throw new Error("SillyTavern API 未加载必要命令");
+    }
+
+    // 读取世界书内容
+    let worldInfo = await moduleWI.loadWorldInfo(fileId);
+    let entries = worldInfo.entries || {};
+    let favoritesUID = null;
+
+    // 查找 "收藏" 条目（通过 key、title 或 comment 匹配）
+    for (const id in entries) {
+      const entry = entries[id];
+      if (!entry.disable && 
+          (entry.key === "收藏" || 
+           entry.title === "收藏" || 
+           entry.comment?.includes("收藏") ||
+           entry.key?.includes("收藏") ||
+           entry.title?.includes("收藏"))) {
+        favoritesUID = entry.uid;
+        break;
+      }
+    }
+
+    let currentContent = "";
+    if (favoritesUID) {
+      // 已存在，读取当前内容
+      currentContent = entries[favoritesUID].content || "";
+    } else {
+      // 创建新条目
+      console.log("[RealWorld] 创建收藏条目");
+      await createEntry.callback({
+        file: fileId,
+        key: "收藏",
+        title: "收藏地点"
+      }, "");  // 初始为空
+
+      await new Promise(resolve => setTimeout(resolve, 1000));
+
+      // 重新加载并查找 UID
+      worldInfo = await moduleWI.loadWorldInfo(fileId);
+      entries = worldInfo.entries || {};
+      for (const id in entries) {
+        const entry = entries[id];
+        if (entry.key === "收藏" || entry.title === "收藏" || entry.key?.includes("收藏")) {
+          favoritesUID = entry.uid;
+          currentContent = entry.content || "";
+          break;
+        }
+      }
+    }
+
+    if (!favoritesUID) {
+      throw new Error("无法创建或找到收藏条目");
+    }
+
+    // 追加新内容（不清空旧内容）
+    const newEntry = `${new Date().toLocaleString()}\n📍 ${searchText}\n\n`;
+    const updatedContent = currentContent ? `${newEntry}${currentContent}` : newEntry;  // 新内容放顶部，旧的在下（或反之，根据需求调整）
+
+    // 更新条目
+    await setEntry.callback({
+      file: fileId,
+      uid: favoritesUID,
+      field: "content"
+    }, updatedContent);
+
+    log(`[RealWorld] 已添加到收藏：${searchText}`);
+    alert(`✅ "${searchText}" 已添加到世界书收藏！`);
+
+    // 可选：清空搜索框
+    searchInput.value = "";
+
+  } catch (error) {
+    console.error("[RealWorld] 添加收藏失败：", error);
+    alert("❌ 添加收藏失败：" + error.message);
+  }
+}
+
+// === 按钮绑定 ===
+starBtn.addEventListener("click", addToFavorites);
+
+// 可选：搜索按钮也能触发收藏（双击或长按），但按需求只绑定⭐
+// 如果需要 Enter 键触发搜索框收藏：
+// searchInput.addEventListener("keypress", (e) => {
+//   if (e.key === "Enter") addToFavorites();
+// });
+
+  let map, mainMarker, autoComplete, placeSearch, currentCity = "";
+
+  // --- 数据持久化 ---
+  function saveState(data) {
+    localStorage.setItem("rw_state", JSON.stringify(data));
+  }
+
+  function loadState() {
+    try {
+      return JSON.parse(localStorage.getItem("rw_state") || "{}");
+    } catch {
+      return {};
+    }
+  }
+
+  // 从缓存加载上次状态
+  const cached = loadState();
+  if (cached.address) {
+    locInput.value = `${cached.address} (${cached.lng}, ${cached.lat})`;
+    document.getElementById("rw-weather").textContent = cached.weather || "天气：--";
+    document.getElementById("rw-temp").textContent = cached.temp || "气温：--°C";
+    document.getElementById("rw-air").textContent = cached.air || "空气质量：--";
+  }
+
+  locateBtn.addEventListener("click", initLocation);
+  
+  function initializeGaodeServices(inputElement) {
+    const AMap = window.AMap;
+    autoComplete = new AMap.AutoComplete({
+      input: inputElement,
+      citylimit: true,
+      city: currentCity || "全国"
+    });
+    placeSearch = new AMap.PlaceSearch({ map });
+
+    autoComplete.on("select", (e) => {
+      if (e.poi && e.poi.name) performSearch(e.poi.name);
     });
 
-    if (!res.ok) throw new Error(`chat/completions 返回 ${res.status}`);
+    // 检测并转移自动补全层
+    const moveSugDom = () => {
+      const sug = document.querySelector(".amap-sug-result");
+      if (sug && sug.parentElement !== document.body) {
+        document.body.appendChild(sug);
+        sug.style.position = "fixed";
+        sug.style.zIndex = 999999;
+        console.log("[RealWorld] 自动补全层已移动到 body");
+      }
+    };
+    for (let i = 0; i < 10; i++) setTimeout(moveSugDom, 200 * i);
 
-    const data = await res.json(); // ✅ 读取返回 JSON
-    document.getElementById("api-status").textContent = `模型 ${model} 可用（ping 成功）`;
-    debugLog("ping 成功", data);
+    log("[RealWorld] Gaode自动补全服务初始化成功");
+  }
 
-    // 可选：显示模型返回内容的第一条
-    if (data.choices && data.choices[0]?.message?.content) {
-      console.log("模型返回:", data.choices[0].message.content);
+  function clearPoiMarkers() {
+    // 预留接口：清除多个POI标记
+  }
+
+  function updateMainMarker(position) {
+    if (mainMarker) mainMarker.setMap(null);
+    mainMarker = new AMap.Marker({ position, map });
+  }
+
+  function showInteractionPopup(poi, position) {
+    if (popupName && popupAddress && popup) {
+      popupName.textContent = poi.name || "";
+      popupAddress.textContent = poi.address || poi.district || "";
+      popup.classList.add("show");
+
+      setTimeout(() => {
+        popup.classList.remove("show");
+      }, 3000);
     }
-  } catch (e) {
-    document.getElementById("api-status").textContent = "连接失败: " + (e.message || e);
-    debugLog("ping 失败", e.message || e);
+  }
+
+  async function initLocation() {
+    locInput.value = "正在定位，请稍候...";
+    log("[RealWorld] 开始定位…");
+
+    const ctx = SillyTavern.getContext();
+    const conf = ctx.extensionSettings["RealWorld"]?.apiConfig || {};
+    const amapKey = conf.amapKey;
+    const amapSecret = conf.amapSecret;
+
+    if (!amapKey || !amapSecret) {
+      locInput.value = "⚠️ 请先在 API 配置面板中设置高德 Key 和安全码";
+      return;
+    }
+
+    try {
+      await loadAMapScript(amapKey, amapSecret);
+      const AMap = window.AMap;
+
+      const mapDiv = document.getElementById("rw-map");
+      map = new AMap.Map(mapDiv, {
+        resizeEnable: true,
+        zoom: 12,
+        viewMode: "2D"
+      });
+
+      const geocoder = new AMap.Geocoder({ extensions: "all" });
+
+      // 点击地图获取详细信息
+      // 点击地图获取详细信息
+let clickTimer = null;
+let isLongPress = false;
+let lastClickInfo = null;
+let touchStartPos = null;
+let isMoved = false;
+let touchCount = 0;
+
+// 配置参数
+const LONG_PRESS_DURATION = 600; // 增加长按时间到600ms
+const MOVE_THRESHOLD = 10; // 移动阈值（像素）
+
+// 检测是否移动过
+function checkIfMoved(startPos, currentPos) {
+  if (!startPos || !currentPos) return false;
+  const dx = Math.abs(currentPos.x - startPos.x);
+  const dy = Math.abs(currentPos.y - startPos.y);
+  return dx > MOVE_THRESHOLD || dy > MOVE_THRESHOLD;
+}
+
+// 清理长按定时器
+function clearLongPressTimer() {
+  if (clickTimer) {
+    clearTimeout(clickTimer);
+    clickTimer = null;
+  }
+  isLongPress = false;
+  isMoved = false;
+  touchStartPos = null;
+}
+
+// 触摸开始
+map.on("touchstart", function (e) {
+  const touches = e.originEvent.touches;
+  touchCount = touches.length;
+
+  // 如果是多点触控（通常是缩放），直接取消长按
+  if (touchCount > 1) {
+    clearLongPressTimer();
+    return;
+  }
+
+  // 记录起始位置
+  const touch = touches[0];
+  touchStartPos = { x: touch.clientX, y: touch.clientY };
+  isLongPress = false;
+  isMoved = false;
+
+  // 开始长按计时
+  clickTimer = setTimeout(() => {
+    // 再次检查是否移动过和是否仍是单点触控
+    if (!isMoved && touchCount === 1) {
+      isLongPress = true;
+
+      // 震动反馈，表示长按已触发
+      if (navigator.vibrate) {
+        navigator.vibrate([50, 30, 50]); // 双重震动反馈
+      }
+
+      // 执行长按逻辑
+      const lnglat = map.containerToLngLat(new AMap.Pixel(touch.clientX, touch.clientY));
+      handleLongPress(lnglat);
+    }
+  }, LONG_PRESS_DURATION);
+});
+
+// 触摸移动
+map.on("touchmove", function (e) {
+  const touches = e.originEvent.touches;
+  touchCount = touches.length;
+
+  // 多点触控或已经移动，取消长按
+  if (touchCount > 1) {
+    clearLongPressTimer();
+    return;
+  }
+
+  // 检测移动距离
+  if (touchStartPos && touches[0]) {
+    const currentPos = { x: touches[0].clientX, y: touches[0].clientY };
+    if (checkIfMoved(touchStartPos, currentPos)) {
+      isMoved = true;
+      clearLongPressTimer();
+    }
   }
 });
 
-  // 拉取模型
-  async function fetchAndPopulateModels(force = false) {
-    const url = document.getElementById("api-url-input").value || localStorage.getItem("independentApiUrl");
-    const key = document.getElementById("api-key-input").value || localStorage.getItem("independentApiKey");
-    if (!url || !key) {
-      document.getElementById("api-status").textContent = "请先填写 URL 和 Key";
-      debugLog("拉取模型失败", "未配置 URL 或 Key");
-      return;
-    }
+// 触摸结束
+map.on("touchend", function (e) {
+  clearLongPressTimer();
+});
 
-    const lastFetch = localStorage.getItem("independentApiModelsFetchedAt");
-    if (!force && lastFetch) {
-      const ts = new Date(parseInt(lastFetch, 10));
-      document.getElementById("api-status").textContent = `模型已在 ${ts.toLocaleString()} 拉取过，请点击刷新`;
-      return;
-    }
+// 触摸取消
+map.on("touchcancel", function (e) {
+  clearLongPressTimer();
+});
 
-    try {
-      const res = await fetch(`${url.replace(/\/$/, "")}/v1/models`, {
-        headers: { Authorization: `Bearer ${key}` }
+// 鼠标事件（桌面端）
+map.on("mousedown", function (e) {
+  // 记录起始位置
+  touchStartPos = { x: e.originEvent.clientX, y: e.originEvent.clientY };
+  isLongPress = false;
+  isMoved = false;
+
+  clickTimer = setTimeout(() => {
+    if (!isMoved) {
+      isLongPress = true;
+      handleLongPress(e.lnglat);
+    }
+  }, LONG_PRESS_DURATION);
+});
+
+map.on("mousemove", function (e) {
+  if (touchStartPos) {
+    const currentPos = { x: e.originEvent.clientX, y: e.originEvent.clientY };
+    if (checkIfMoved(touchStartPos, currentPos)) {
+      isMoved = true;
+      clearLongPressTimer();
+    }
+  }
+});
+
+map.on("mouseup", function () {
+  clearLongPressTimer();
+});
+
+// 点击事件（短按）
+map.on("click", function (e) {
+  // 如果是长按触发的，忽略click事件
+  if (isLongPress) {
+    isLongPress = false;
+    return;
+  }
+
+  const { lng, lat } = e.lnglat;
+  handleShortPress({ lng, lat });
+});
+
+// 长按处理函数
+function handleLongPress(lnglat) {
+  const { lng, lat } = lnglat;
+
+  geocoder.getAddress({ lng, lat }, (status, result) => {
+    if (status === "complete" && result.regeocode) {
+      const placeName = extractPlaceName(result.regeocode);
+      const addr = result.regeocode.formattedAddress;
+
+      // 计算距离
+      const cached = loadState();
+      let distanceText = "";
+      if (cached.lng && cached.lat) {
+        const lnglat1 = new AMap.LngLat(cached.lng, cached.lat);
+        const lnglat2 = new AMap.LngLat(lng, lat);
+        const distance = Math.round(lnglat1.distance(lnglat2));
+
+        if (distance < 1000) {
+          distanceText = `${distance}米`;
+        } else {
+          distanceText = `${(distance / 1000).toFixed(1)}公里`;
+        }
+      }
+
+      const roadTag = `<road>正在前往${placeName}，${addr}${distanceText ? `，${distanceText}` : ''}</road>`;
+
+      const chatInput = document.getElementById('send_textarea');
+      if (chatInput) {
+        const currentValue = chatInput.value;
+        chatInput.value = currentValue + (currentValue ? '\n' : '') + roadTag;
+        chatInput.dispatchEvent(new Event('input', { bubbles: true }));
+
+        // 显示成功提示
+        toastr.success(`已注入路径信息：${placeName}`, '长按地图', {
+          positionClass: "toast-top-center",
+          timeOut: 2000
+        });
+      }
+
+      updateMainMarker([lng, lat]);
+    }
+  });
+}
+
+// 短按处理函数
+function handleShortPress({ lng, lat }) {
+  geocoder.getAddress({ lng, lat }, (status, result) => {
+    if (status === "complete" && result.regeocode) {
+      const placeName = extractPlaceName(result.regeocode);
+      const addr = result.regeocode.formattedAddress;
+
+      // 计算距离
+      const cached = loadState();
+      let distance = null;
+      if (cached.lng && cached.lat) {
+        const lnglat1 = new AMap.LngLat(cached.lng, cached.lat);
+        const lnglat2 = new AMap.LngLat(lng, lat);
+        distance = Math.round(lnglat1.distance(lnglat2));
+      }
+
+      const clickPoi = {
+        name: placeName,
+        address: addr,
+        position: [lng, lat],
+        distance: distance
+      };
+
+      lastClickInfo = {
+        name: placeName,
+        address: addr,
+        distance: distance
+      };
+
+      showInteractionPopup(clickPoi, [lng, lat]);
+      updateMainMarker([lng, lat]);
+    }
+  });
+}
+
+// 提取地点名称的函数
+function extractPlaceName(regeocode) {
+  let placeName = "";
+
+  if (regeocode.pois && regeocode.pois.length > 0) {
+    placeName = regeocode.pois[0].name;
+  } else if (regeocode.roads && regeocode.roads.length > 0) {
+    placeName = regeocode.roads[0].name;
+  } else if (regeocode.aois && regeocode.aois.length > 0) {
+    placeName = regeocode.aois[0].name;
+  } else if (regeocode.addressComponent) {
+    const comp = regeocode.addressComponent;
+    if (comp.building && comp.building.name) {
+      placeName = comp.building.name;
+    } else if (comp.neighborhood && comp.neighborhood.name) {
+      placeName = comp.neighborhood.name;
+    } else if (comp.street) {
+      placeName = comp.street;
+    } else {
+      placeName = comp.district || "未知地点";
+    }
+  }
+
+  return placeName || "未知地点";
+}
+
+
+
+      // 延迟初始化高德服务
+      AMap.plugin(["AMap.AutoComplete", "AMap.PlaceSearch"], () => {
+        const inputEl = document.getElementById("rw-search-input");
+        if (inputEl) initializeGaodeServices(inputEl);
+        else log("[RealWorld] 警告：搜索输入框未找到，无法初始化自动补全");
       });
-      const data = await res.json();
-      debugLog("拉取模型原始返回", data);
 
-      const ids = parseModelIdsFromResponse(data);
-      if (ids.length === 0) throw new Error("未解析到模型");
+      // 高德定位
+      AMap.plugin("AMap.Geolocation", function () {
+        const geolocation = new AMap.Geolocation({
+          enableHighAccuracy: true,
+          timeout: 10000,
+          showButton: false
+        });
 
-      localStorage.setItem("independentApiModels", JSON.stringify(ids));
-      localStorage.setItem("independentApiModelsFetchedAt", String(Date.now()));
+        geolocation.getCurrentPosition((status, result) => {
+          if (status === "complete" && result.position) {
+            const { lng, lat } = result.position;
+            log(`[RealWorld] 高德定位成功：经度 ${lng}, 纬度 ${lat}`);
+            map.setCenter([lng, lat]);
+            mainMarker = new AMap.Marker({ position: [lng, lat], map });
 
-      populateModelSelect(ids);
-      document.getElementById("api-status").textContent = `已拉取 ${ids.length} 个模型`;
-    } catch (e) {
-      document.getElementById("api-status").textContent = "拉取失败: " + e.message;
-      debugLog("拉取模型失败", e.message);
+            geocoder.getAddress({ lng, lat }, (status, geoResult) => {
+              if (status === "complete" && geoResult.regeocode) {
+                const addrComp = geoResult.regeocode.addressComponent;
+                const formatted = geoResult.regeocode.formattedAddress;
+                currentCity = addrComp.city || addrComp.province;
+                if (autoComplete) autoComplete.setCity(currentCity);
+
+                locInput.value = `${formatted} (${lng.toFixed(5)}, ${lat.toFixed(5)})`;
+                log(`[RealWorld] 地址解析成功：${formatted}`);
+                getWeatherInfo(addrComp.adcode);
+
+                // 🌤️ 保存状态
+                setTimeout(() => {
+                  const weatherSpan = document.getElementById("rw-weather").textContent;
+                  const tempSpan = document.getElementById("rw-temp").textContent;
+                  const airSpan = document.getElementById("rw-air").textContent;
+                  saveState({
+                    address: formatted,
+                    lng, lat,
+                    weather: weatherSpan,
+                    temp: tempSpan,
+                    air: airSpan
+                  });
+                }, 1500);
+              } else {
+                locInput.value = `${lng.toFixed(5)}, ${lat.toFixed(5)}（无法解析地址）`;
+              }
+            });
+          } else {
+            log("[RealWorld] 高德定位失败，尝试浏览器定位");
+            fallbackGeolocation();
+          }
+        });
+      });
+
+    } catch (err) {
+      log(`[RealWorld] 加载高德定位出错：${err}`);
+      fallbackGeolocation();
     }
   }
 
-  function parseModelIdsFromResponse(data) {
-    if (!data) return [];
-    if (Array.isArray(data.data)) return data.data.map(m => m.id || m.model || m.name).filter(Boolean);
-    if (Array.isArray(data.models)) return data.models.map(m => m.id || m.model || m.name).filter(Boolean);
-    if (Array.isArray(data)) return data.map(m => m.id || m.model || m.name).filter(Boolean);
-    if (data.model) return [data.model];
-    if (data.id) return [data.id];
-    return [];
+  function getWeatherInfo(adcode) {
+  const weatherSpan = document.getElementById("rw-weather");
+  const tempSpan = document.getElementById("rw-temp");
+  const airSpan = document.getElementById("rw-air");
+
+  AMap.plugin("AMap.Weather", () => {
+    const weather = new AMap.Weather();
+    weather.getLive(adcode, (err, data) => {
+      if (!err && data) {
+        weatherSpan.textContent = `天气：${data.weather}`;
+        tempSpan.textContent = `气温：${data.temperature}°C`;
+
+        // 保存城市信息到缓存
+        const cached = loadState();
+        cached.city = data.city || currentCity;
+        saveState(cached);
+      }
+    });
+    weather.getForecast(adcode, (err, data) => {
+      airSpan.textContent = (data?.forecasts?.[0]?.reporttime)
+        ? "空气质量：良"
+        : "空气质量：--";
+    });
+  });
+}
+
+
+  function fallbackGeolocation() {
+    if (!("geolocation" in navigator)) {
+      locInput.value = "浏览器不支持定位";
+      return;
+    }
+    navigator.geolocation.getCurrentPosition(
+      (pos) => {
+        const { latitude, longitude } = pos.coords;
+        locInput.value = `${latitude.toFixed(6)}, ${longitude.toFixed(6)}（来源：浏览器）`;
+      },
+      (err) => {
+        locInput.value = `定位失败：${err.message}`;
+      },
+      { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 }
+    );
   }
 
-  document.getElementById("api-refresh-models-btn").addEventListener("click", async () => {
-    debugLog("手动刷新模型", "");
-    await fetchAndPopulateModels(true);
+  function loadAMapScript(key, secret) {
+  return new Promise((resolve, reject) => {
+    if (window.AMap) {
+      log("[RealWorld] AMap已加载");
+      return resolve();
+    }
+
+    window._AMapSecurityConfig = { securityJsCode: secret };
+
+    const script = document.createElement("script");
+    script.type = "text/javascript";
+    // 添加所有必要的插件
+    script.src = `https://webapi.amap.com/maps?v=2.0&key=${key}&plugin=AMap.Geocoder,AMap.Weather,AMap.Geolocation,AMap.AutoComplete,AMap.PlaceSearch`;
+
+    script.onload = () => {
+      log("[RealWorld] 高德地图脚本加载成功");
+      if (window.AMap) resolve();
+      else reject(new Error("AMap 基础库加载失败"));
+    };
+
+    script.onerror = (error) => {
+      log("[RealWorld] 高德地图脚本加载失败:", error);
+      reject(error);
+    };
+
+    document.head.appendChild(script);
+  });
+}
+  // === 标签系统 ===
+const tagInput = container.querySelector("#rw-tag-input");
+const addTagBtn = container.querySelector("#rw-add-tag");
+const delModeBtn = container.querySelector("#rw-del-mode");
+const smartSearchBtn = container.querySelector("#rw-smart-search");
+const tagListDiv = container.querySelector("#rw-tag-list");
+
+let tags = JSON.parse(localStorage.getItem("rw_tags") || "[]");
+let deleteMode = false;
+
+function renderTags() {
+  tagListDiv.innerHTML = "";
+  tags.forEach((tag, index) => {
+    const span = document.createElement("span");
+    span.className = "rw-tag-item";
+    span.textContent = tag.name;
+    if (tag.enabled) span.classList.add("active");
+    span.addEventListener("click", () => {
+      if (deleteMode) {
+        tags.splice(index, 1);
+        saveTags();
+        renderTags();
+      } else {
+        tag.enabled = !tag.enabled;
+        saveTags();
+        renderTags();
+      }
+    });
+    tagListDiv.appendChild(span);
+  });
+}
+
+function saveTags() {
+  localStorage.setItem("rw_tags", JSON.stringify(tags));
+}
+
+addTagBtn.addEventListener("click", () => {
+  const value = tagInput.value.trim();
+  if (!value) return;
+  tags.push({ name: value, enabled: true });
+  saveTags();
+  renderTags();
+  tagInput.value = "";
+});
+
+delModeBtn.addEventListener("click", () => {
+  deleteMode = !deleteMode;
+  delModeBtn.classList.toggle("active", deleteMode);
+  delModeBtn.title = deleteMode ? "删除模式中" : "普通模式";
+});
+
+smartSearchBtn.addEventListener("click", () => {
+  const enabledTags = tags.filter(t => t.enabled).map(t => t.name);
+  if (enabledTags.length === 0) {
+    log("[RealWorld] 没有启用标签，智能搜索已取消");
+    return;
+  }
+
+  const keyword = searchInput.value.trim();
+  // 获取用户设置的搜索半径
+  const searchRadius = parseInt(localStorage.getItem('rw_search_radius') || '2000');
+
+  if (keyword) {
+    // 先搜索输入的地点，获取坐标后再搜索周边
+    placeSearch.search(keyword, (status, result) => {
+      if (status === "complete" && result.poiList && result.poiList.pois.length > 0) {
+        const centerPoi = result.poiList.pois[0];
+        const centerPos = centerPoi.location;
+
+        // 以找到的地点为中心搜索周边
+        const nearbyQuery = enabledTags.join(" ");
+        placeSearch.searchNearBy(nearbyQuery, centerPos, searchRadius, (nearbyStatus, nearbyResult) => {
+          if (nearbyStatus === "complete" && nearbyResult.poiList && nearbyResult.poiList.pois.length > 0) {
+            // 显示中心点
+            if (mainMarker) mainMarker.setMap(null);
+            mainMarker = new AMap.Marker({
+              position: centerPos,
+              map: map,
+              title: centerPoi.name
+            });
+
+            // 显示第一个搜索结果
+            const firstPoi = nearbyResult.poiList.pois[0];
+            map.setCenter(firstPoi.location);
+            map.setZoom(16);  // 保持原来的缩放级别
+
+            popupName.textContent = `找到${nearbyResult.poiList.pois.length}个结果`;
+            popupAddress.textContent = `最近：${firstPoi.name}`;
+            popup.classList.add("show");
+
+            setTimeout(() => {
+              popup.classList.remove("show");
+            }, 3000);
+
+            log(`[RealWorld] 在${centerPoi.name}附近${searchRadius}米内找到${nearbyResult.poiList.pois.length}个结果`);
+          } else {
+            log(`[RealWorld] 在${centerPoi.name}附近${searchRadius}米内未找到相关结果`);
+          }
+        });
+      } else {
+        log(`[RealWorld] 未找到地点：${keyword}`);
+      }
+    });
+  } else {
+    // 使用当前位置搜索周边
+    const cached = loadState();
+    if (cached.lng && cached.lat) {
+      const currentPos = new AMap.LngLat(cached.lng, cached.lat);
+      const nearbyQuery = enabledTags.join(" ");
+
+      placeSearch.searchNearBy(nearbyQuery, currentPos, searchRadius, (status, result) => {
+        if (status === "complete" && result.poiList && result.poiList.pois.length > 0) {
+          const firstPoi = result.poiList.pois[0];
+          map.setCenter(firstPoi.location);
+          map.setZoom(16);  // 保持原来的缩放级别
+
+          popupName.textContent = `找到${result.poiList.pois.length}个结果`;
+          popupAddress.textContent = `最近：${firstPoi.name}`;
+          popup.classList.add("show");
+
+          setTimeout(() => {
+            popup.classList.remove("show");
+          }, 3000);
+
+          log(`[RealWorld] 在当前位置附近${searchRadius}米内找到${result.poiList.pois.length}个结果`);
+        } else {
+          log("[RealWorld] 在当前位置附近未找到相关结果");
+        }
+      });
+    } else {
+      log("[RealWorld] 请先定位当前位置");
+    }
+  }
+});
+
+
+// 初始化时渲染标签
+renderTags();
+
+async function performSearch(keyword) {
+  if (!keyword || !placeSearch) {
+    log("[RealWorld] 搜索关键词为空或搜索服务未初始化");
+    return;
+  }
+
+  log(`[RealWorld] 执行搜索：${keyword}`);
+
+  placeSearch.search(keyword, (status, result) => {
+    if (status === "complete" && result.poiList && result.poiList.pois.length > 0) {
+      const poi = result.poiList.pois[0];
+      const position = poi.location;
+
+      map.setCenter(position);
+      map.setZoom(16);
+
+      if (mainMarker) mainMarker.setMap(null);
+      mainMarker = new AMap.Marker({
+        position: position,
+        map: map,
+        title: poi.name
+      });
+
+      searchInput.value = poi.name;
+
+      popupName.textContent = poi.name;
+      popupAddress.textContent = poi.address || "";
+      popup.classList.add("show");
+
+      setTimeout(() => {
+        popup.classList.remove("show");
+      }, 3000);
+    } else {
+      popup.classList.remove("show");
+      log(`[RealWorld] 未找到"${keyword}"相关结果`);
+    }
+  });
+}
+
+}
+
+  function loadAPIPanel(container) {
+    const cfg = extension_settings[MODULE_NAME].apiConfig || {};
+    container.innerHTML = `
+      <div class="rw-panel">
+        <h3>API 配置</h3>
+        <label class="rw-label">高德 Key</label>
+        <input type="text" id="rw-amap-key" class="rw-input" placeholder="请输入高德开放平台 Key" value="${cfg.amapKey || ""}">
+        <label class="rw-label">高德安全密钥</label>
+        <input type="text" id="rw-amap-secret" class="rw-input" placeholder="请输入高德安全密钥" value="${cfg.amapSecret || ""}">
+        <div class="rw-tip">修改后会自动保存</div>
+      </div>
+    `;
+
+    const keyInput = container.querySelector("#rw-amap-key");
+    const secInput = container.querySelector("#rw-amap-secret");
+
+    const save = () => {
+      extension_settings[MODULE_NAME].apiConfig.amapKey = keyInput.value.trim();
+      extension_settings[MODULE_NAME].apiConfig.amapSecret = secInput.value.trim();
+      saveSettingsDebounced();
+      log("已保存 API 配置。");
+    };
+
+    keyInput.addEventListener("input", save);
+    secInput.addEventListener("input", save);
+  }
+  function loadInjectPanel(container) {
+  container.innerHTML = `
+    <div class="rw-panel">
+      <div class="rw-row" style="gap: 8px; align-items: center;">
+        <button id="rw-update-now-btn" class="rw-btn-mini">立刻更新</button>
+        <button id="rw-auto-update-btn" class="rw-btn-mini">自动更新</button>
+      </div>
+
+      <!-- 新增行：数字输入 + 当前消息数 + 预计消息数 -->
+      <div class="rw-row" style="gap: 8px; align-items: center; margin-top: 8px;">
+        <input type="number" id="rw-add-number" class="rw-input" placeholder="输入数字" style="width:80px;">
+        <span>当前消息数：<span id="rw-current-msg">0</span></span>
+        <span>预计消息数：<span id="rw-expected-msg">0</span></span>
+      </div>
+      
+      <!-- 新增：搜索半径和结果数量设置 -->
+      <div class="rw-row" style="gap: 8px; align-items: center; margin-top: 8px;">
+        <label style="white-space: nowrap;">搜索半径：</label>
+        <input type="number" id="rw-search-radius" class="rw-input" placeholder="2000" style="width:80px;" min="100" max="10000" value="${localStorage.getItem('rw_search_radius') || 2000}">
+        <span>米</span>
+      </div>
+      
+      <div class="rw-row" style="gap: 8px; align-items: center; margin-top: 8px;">
+        <label style="white-space: nowrap;">最大结果：</label>
+        <input type="number" id="rw-max-results" class="rw-input" placeholder="10" style="width:80px;" min="1" max="50" value="${localStorage.getItem('rw_max_results') || 10}">
+        <span>条</span>
+      </div>
+    </div>
+  `;
+
+  const updateNowBtn = container.querySelector("#rw-update-now-btn");
+  const autoUpdateBtn = container.querySelector("#rw-auto-update-btn");
+  const addNumberInput = container.querySelector("#rw-add-number");
+  const currentMsgSpan = container.querySelector("#rw-current-msg");
+  const expectedMsgSpan = container.querySelector("#rw-expected-msg");
+  
+  // 新增：获取搜索半径和最大结果输入框
+  const searchRadiusInput = container.querySelector("#rw-search-radius");
+  const maxResultsInput = container.querySelector("#rw-max-results");
+
+  // 保存搜索半径和最大结果数到 localStorage
+  searchRadiusInput.addEventListener("input", () => {
+    localStorage.setItem("rw_search_radius", searchRadiusInput.value);
+    log(`[RealWorld] 搜索半径已更新为 ${searchRadiusInput.value} 米`);
   });
 
-  // 自动首次拉取一次
-  fetchAndPopulateModels(false);
-}
+  maxResultsInput.addEventListener("input", () => {
+    localStorage.setItem("rw_max_results", maxResultsInput.value);
+    log(`[RealWorld] 最大结果数已更新为 ${maxResultsInput.value} 条`);
+  });
+  // 自动更新状态
+  let autoUpdateActive = false;
+  let expectedCount = 0;
+  let lastMessageCount = 0;
+  let autoObserver = null;
+  const AUTO_MODE_KEY = 'rw_auto_update_mode';
 
-      function showPromptConfig() {
-    content.innerHTML = `
-        <div style="padding: 12px; background: #f4f4f4; border-radius: 8px; max-width: 600px; margin: 0 auto;">
-            <textarea rows="3" id="sp-prompt-text" placeholder="输入提示词" style="width: 100%; padding: 8px; border-radius: 4px;"></textarea><br>
-            <div id="sp-prompt-list" style="max-height: 200px; overflow-y: auto; margin-top: 12px; border-top: 1px solid #ccc; padding-top: 6px; color: black;"></div>
-            <input type="text" id="sp-prompt-search" placeholder="按标签搜索" style="width: 70%; padding: 8px; margin-top: 8px; border-radius: 4px;">
-            <button id="sp-prompt-search-btn" style="padding: 8px; margin-left: 8px; border-radius: 4px; background-color: #007bff; color: white;">搜索</button>
-            <button id="save-prompts-btn" style="margin-top: 12px; padding: 8px; width: 100%; background-color: #28a745; color: white; border: none; border-radius: 4px;">保存提示词</button>
-        </div>
-    `;
+  // 从 localStorage 读取保存的数字
+  const savedNumber = localStorage.getItem("rw_add_number");
+  if (savedNumber) {
+    addNumberInput.value = savedNumber;
+  }
 
-    const PROMPTS_KEY = 'friendCircleUserPrompts';
-    let friendCirclePrompts = [];
-    let promptTagFilter = "";
+  // === 立刻更新世界书的逻辑（保留原有内容） ===
+  async function updateWorldLocationEntry() {
+  try {
+    console.log("[RealWorld] 开始更新世界书：realworld/当前位置信息");
 
-    // Load user prompts from localStorage
-    function loadUserPrompts() {
-        const raw = localStorage.getItem(PROMPTS_KEY);
-        friendCirclePrompts = raw ? JSON.parse(raw) : [];
-        return friendCirclePrompts;
+    // 读取 localStorage 的保存数据
+    const cached = JSON.parse(localStorage.getItem("rw_state") || "{}");
+    if (!cached.address) {
+      alert("未找到本地位置数据，请先进行一次定位。");
+      return;
     }
 
-    // Render the prompt list
-    function renderPromptList() {
-        const container = document.getElementById('sp-prompt-list');
-        container.innerHTML = '';
+    const { address, lng, lat, weather, temp, air } = cached;
 
-        friendCirclePrompts.forEach((p, idx) => {
-            if (promptTagFilter && !p.tags.some(tag => tag.toLowerCase().includes(promptTagFilter))) {
-                return;
-            }
-
-            const div = document.createElement('div');
-            div.style.marginBottom = '8px';
-            div.style.borderBottom = '1px solid #eee';
-            div.style.paddingBottom = '6px';
-
-            // First row (checkbox, text, buttons)
-            const row = document.createElement('div');
-            row.style.display = 'flex';
-            row.style.alignItems = 'center';
-
-            const checkbox = document.createElement('input');
-            checkbox.type = 'checkbox';
-            checkbox.checked = p.enabled || false;
-            checkbox.style.marginRight = '8px';
-            checkbox.addEventListener('change', () => {
-                friendCirclePrompts[idx].enabled = checkbox.checked;
-                localStorage.setItem(PROMPTS_KEY, JSON.stringify(friendCirclePrompts));
-            });
-
-            const span = document.createElement('span');
-            span.textContent = p.text;
-            span.style.flex = '1';
-            span.style.overflow = 'hidden';
-            span.style.textOverflow = 'ellipsis';
-            span.style.whiteSpace = 'nowrap';
-
-            const editBtn = document.createElement('button');
-            editBtn.textContent = '✏️';
-            editBtn.style.marginLeft = '8px';
-            editBtn.addEventListener('click', () => {
-                const input = document.createElement('input');
-                input.type = 'text';
-                input.value = p.text;
-                input.style.flex = '1';
-                row.replaceChild(input, span);
-
-                input.addEventListener('blur', () => {
-                    const newText = input.value.trim();
-                    if (newText) {
-                        friendCirclePrompts[idx].text = newText;
-                        localStorage.setItem(PROMPTS_KEY, JSON.stringify(friendCirclePrompts));
-                    }
-                    renderPromptList();
-                });
-                input.focus();
-            });
-
-            const tagBtn = document.createElement('button');
-            tagBtn.textContent = '🏷️';
-            tagBtn.style.marginLeft = '8px';
-            tagBtn.addEventListener('click', () => {
-                const newTag = prompt('输入标签:');
-                if (newTag) {
-                    if (!Array.isArray(friendCirclePrompts[idx].tags)) {
-                        friendCirclePrompts[idx].tags = [];
-                    }
-                    friendCirclePrompts[idx].tags.push(newTag);
-                    localStorage.setItem(PROMPTS_KEY, JSON.stringify(friendCirclePrompts));
-                    renderPromptList();
-                }
-            });
-
-            const delBtn = document.createElement('button');
-            delBtn.textContent = '❌';
-            delBtn.style.marginLeft = '8px';
-            delBtn.addEventListener('click', () => {
-                friendCirclePrompts.splice(idx, 1);
-                localStorage.setItem(PROMPTS_KEY, JSON.stringify(friendCirclePrompts));
-                renderPromptList();
-            });
-
-            row.appendChild(checkbox);
-            row.appendChild(span);
-            row.appendChild(editBtn);
-            row.appendChild(tagBtn);
-            row.appendChild(delBtn);
-
-            div.appendChild(row);
-
-            // Tags row
-            if (p.tags && p.tags.length > 0) {
-                const tagsRow = document.createElement('div');
-                tagsRow.style.marginLeft = '20px';
-                tagsRow.style.marginTop = '6px';
-
-                p.tags.forEach((t, tIdx) => {
-                    const tagEl = document.createElement('span');
-                    tagEl.textContent = t;
-                    tagEl.style.display = 'inline-block';
-                    tagEl.style.padding = '4px 8px';
-                    tagEl.style.margin = '0 6px 6px 0';
-                    tagEl.style.fontSize = '12px';
-                    tagEl.style.borderRadius = '10px';
-                    tagEl.style.background = '#e0e0e0';
-                    tagEl.style.cursor = 'pointer';
-                    tagEl.title = '点击删除标签';
-                    tagEl.addEventListener('click', () => {
-                        friendCirclePrompts[idx].tags.splice(tIdx, 1);
-                        localStorage.setItem(PROMPTS_KEY, JSON.stringify(friendCirclePrompts));
-                        renderPromptList();
-                    });
-                    tagsRow.appendChild(tagEl);
-                });
-
-                div.appendChild(tagsRow);
-            }
-
-            container.appendChild(div);
-        });
-    }
-
-    // Add new prompt
-    document.getElementById('sp-prompt-search-btn').addEventListener('click', () => {
-        promptTagFilter = document.getElementById('sp-prompt-search').value.trim().toLowerCase();
-        renderPromptList();
-    });
-
-    // Save prompts
-    document.getElementById('save-prompts-btn').addEventListener('click', () => {
-        localStorage.setItem(PROMPTS_KEY, JSON.stringify(friendCirclePrompts));
-        alert('提示词已保存');
-        debugLog('保存用户自定义提示词', friendCirclePrompts);
-    });
-
-    // Add prompt
-    document.getElementById('sp-prompt-text').addEventListener('blur', () => {
-        const promptText = document.getElementById('sp-prompt-text').value.trim();
-        if (promptText) {
-            friendCirclePrompts.push({ text: promptText, enabled: true, tags: [] });
-            localStorage.setItem(PROMPTS_KEY, JSON.stringify(friendCirclePrompts));
-            document.getElementById('sp-prompt-text').value = ''; // Clear the input
-            renderPromptList();
-        }
-    });
-
-    loadUserPrompts();
-    renderPromptList();
-    debugLog('进入 提示词配置面板');
-}
-
- function showChatConfig() {
-    const content = document.getElementById('sp-content-area');
-    content.innerHTML = `
-    <div style="padding:12px; background:#ffffff; color:#000000; border-radius:8px; max-width:500px; margin:0 auto;">
-        <div id="sp-chat-slider-container" style="display:flex; align-items:center; margin-bottom:12px;">
-            <span style="margin-right:10px;">读取聊天条数: </span>
-            <input type="range" id="sp-chat-slider" min="0" max="20" value="10" style="flex:1;">
-            <span id="sp-chat-slider-value" style="margin-left:4px;">10</span>
-        </div>
-
-        <div style="margin-bottom:12px;">
-            <h4>正则修剪列表</h4>
-            <div style="display:flex; gap:6px; margin-bottom:6px;">
-                <input type="text" id="sp-new-regex" placeholder="<example></example>" style="flex:1;">
-                <button id="sp-add-regex">添加</button>
-            </div>
-            <div id="sp-regex-list" style="max-height:200px; overflow-y:auto; border:1px solid #ccc; padding:6px; border-radius:6px;"></div>
-        </div>
-    </div>
-    `;
-
-    const sliderInput = document.getElementById('sp-chat-slider');
-    const sliderValue = document.getElementById('sp-chat-slider-value');
-
-    // 初始化 slider 值（持久化）
-    const savedCount = localStorage.getItem('friendCircleChatCount');
-    if (savedCount) {
-        sliderInput.value = savedCount;
-        sliderValue.textContent = savedCount;
-    }
-
-    sliderInput.addEventListener('input', () => {
-        sliderValue.textContent = sliderInput.value;
-        localStorage.setItem('friendCircleChatCount', sliderInput.value);
-        debugLog(`已设置读取聊天条数为 ${sliderInput.value}`);
-        fetchAndCountMessages();
-    });
-
-    // ---------------- 正则列表相关 ----------------
-    const regexListContainer = document.getElementById('sp-regex-list');
-    const addRegexInput = document.getElementById('sp-new-regex');
-    const addRegexButton = document.getElementById('sp-add-regex');
-
-    function loadRegexList() {
-        const list = JSON.parse(localStorage.getItem('friendCircleRegexList') || '[]');
-        regexListContainer.innerHTML = '';
-        list.forEach((item, idx) => {
-            const div = document.createElement('div');
-            div.style.display = 'flex';
-            div.style.alignItems = 'center';
-            div.style.marginBottom = '4px';
-            div.style.gap = '4px';
-
-            const checkbox = document.createElement('input');
-            checkbox.type = 'checkbox';
-            checkbox.checked = item.enabled;
-            checkbox.addEventListener('change', () => {
-                list[idx].enabled = checkbox.checked;
-                localStorage.setItem('friendCircleRegexList', JSON.stringify(list));
-            });
-
-            const text = document.createElement('span');
-            text.textContent = item.pattern;
-            text.style.flex = '1';
-            text.style.wordBreak = 'break-all';
-
-            const editBtn = document.createElement('button');
-            editBtn.textContent = '编辑';
-            editBtn.addEventListener('click', () => {
-                const newVal = prompt('编辑正则', item.pattern);
-                if (newVal !== null) {
-                    list[idx].pattern = newVal;
-                    localStorage.setItem('friendCircleRegexList', JSON.stringify(list));
-                    loadRegexList();
-                }
-            });
-
-            const delBtn = document.createElement('button');
-            delBtn.textContent = '删除';
-            delBtn.addEventListener('click', () => {
-                list.splice(idx, 1);
-                localStorage.setItem('friendCircleRegexList', JSON.stringify(list));
-                loadRegexList();
-            });
-
-            div.appendChild(checkbox);
-            div.appendChild(text);
-            div.appendChild(editBtn);
-            div.appendChild(delBtn);
-            regexListContainer.appendChild(div);
-        });
-        regexListContainer.scrollTop = regexListContainer.scrollHeight;
-    }
-
-    addRegexButton.addEventListener('click', () => {
-        const val = addRegexInput.value.trim();
-        if (!val) return;
-        const list = JSON.parse(localStorage.getItem('friendCircleRegexList') || '[]');
-        list.push({ pattern: val, enabled: true });
-        localStorage.setItem('friendCircleRegexList', JSON.stringify(list));
-        addRegexInput.value = '';
-        loadRegexList();
-    });
-
-    loadRegexList();
-
-    // ---------------- 获取聊天条数并调试显示 ----------------
-    // 渲染到调试面板，而不是用 console/debugLog
-function renderMessagesForDebug(messages) {
-    const debugArea = document.getElementById('sp-debug');
-    if (!debugArea) return;
-
-    debugArea.innerHTML = ''; // 清空旧内容
-    messages.forEach((text, i) => {
-        const div = document.createElement('div');
-        div.textContent = `[${i}] ${text}`;
-        div.style.padding = '2px 0';
-        div.style.borderBottom = '1px solid #eee';
-        debugArea.appendChild(div);
-    });
-}
-
-// ---------------- 获取聊天条数并调试显示 ----------------
-async function getLastMessages() {
-    try {
-        const ctx = SillyTavern.getContext();
-        if (!ctx || !Array.isArray(ctx.chat)) return [];
-
-        const count = parseInt(localStorage.getItem('friendCircleChatCount') || 10, 10);
-        if (count === 0) return []; // slider 为0返回空数组
-
-        const lastMessages = ctx.chat.slice(-count);
-
-        const regexList = JSON.parse(localStorage.getItem('friendCircleRegexList') || '[]')
-            .filter(r => r.enabled)
-            .map(r => {
-                try {
-                    // 检查是否是 <tag></tag> 形式，自动生成匹配内容的正则
-                    const tagMatch = r.pattern.match(/^<(\w+)>.*<\/\1>$/);
-                    if (tagMatch) {
-                        const tag = tagMatch[1];
-                        return new RegExp(`<${tag}>[\\s\\S]*?<\\/${tag}>`, 'g');
-                    }
-                    return new RegExp(r.pattern, 'g');
-                } catch (e) {
-                    console.warn('无效正则:', r.pattern);
-                    return null;
-                }
-            })
-            .filter(Boolean);
-
-        const cuttedLastMessages = lastMessages.map(msg => {
-            let text = msg.mes || msg.original_mes || "";
-            regexList.forEach(regex => { text = text.replace(regex, ''); });
-            return text.trim();
-        }).filter(Boolean);
-
-        localStorage.setItem('cuttedLastMessages', JSON.stringify(cuttedLastMessages));
-
-        // ✅ 用自定义渲染函数展示到调试面板
-        renderMessagesForDebug(cuttedLastMessages);
-
-        return cuttedLastMessages;
-    } catch (e) {
-        console.error('getLastMessages 出错', e);
-        return [];
-    }
-}
-
-    async function fetchAndCountMessages() {
-        await getLastMessages();
-    }
-
-    // 初始化
-    fetchAndCountMessages();
-    debugLog('进入 聊天配置面板');
-}
-// 添加到主代码中，与其他 show* 函数并列
-async function showWorldbookPanel() {
-    content.innerHTML = `
-    <div style="padding: 12px; background: #f4f4f4; border-radius: 8px; max-width: 800px; margin: 0 auto;">
-        <div style="display: flex; gap: 8px; margin-bottom: 12px; align-items: center;">
-            <input type="text" id="sp-worldbook-input" placeholder="输入世界书名称（如 realworld）" style="
-                flex: 1; 
-                padding: 6px 8px; 
-                border-radius: 4px; 
-                height: 32px; 
-                font-size: 14px;
-                box-sizing: border-box;
-                min-width: 0;
-            ">
-            <button id="sp-search-btn" style="
-                padding: 6px 10px; 
-                background: #007bff; 
-                color: white; 
-                border: none; 
-                border-radius: 4px;
-                height: 32px;
-                font-size: 14px;
-                white-space: nowrap;
-                cursor: pointer;
-                box-sizing: border-box;
-            ">🔎</button>
-            <button id="sp-robot-btn" style="
-                padding: 6px 10px; 
-                background: #28a745; 
-                color: white; 
-                border: none; 
-                border-radius: 4px;
-                height: 32px;
-                font-size: 14px;
-                white-space: nowrap;
-                cursor: pointer;
-                box-sizing: border-box;
-            ">🤖</button>
-        </div>
-        <div style="display: flex; gap: 12px; margin-bottom: 12px;">
-            <label><input type="checkbox" id="sp-select-all"> 全选</label>
-            <label><input type="checkbox" id="sp-deselect-all"> 全不选</label>
-        </div>
-        <div id="sp-entries-list" style="max-height: 100px; overflow-y: auto; border: 1px solid #ccc; padding: 8px; background: white; border-radius: 4px;">
-            <div style="color: #666; text-align: center;">点击搜索按钮加载世界书条目</div>
-        </div>
-        <button id="sp-save-config" style="margin-top: 12px; padding: 8px; width: 100%; background: #ffc107; color: black; border: none; border-radius: 4px;">保存配置</button>
-        <div id="sp-worldbook-status" style="margin-top: 8px; font-size: 12px; color: #666;"></div>
-    </div>
-`;
-
-    const STATIC_CONFIG_KEY = 'friendCircleStaticConfig';
-    const DYNAMIC_CONFIG_KEY = 'friendCircleDynamicConfig';
-    let currentWorldbookName = '';
-    let currentFileId = '';
-    let currentEntries = {};
-    let currentMode = ''; // 'static' or 'dynamic'
-    let currentConfig = {}; // {name: {fileId, enabledUids: []}}
-
-    // 动态导入 world-info
-    let moduleWI;
-    try {
-        moduleWI = await import('/scripts/world-info.js');
-    } catch (e) {
-        document.getElementById('sp-worldbook-status').textContent = '❌ world-info.js 加载失败';
-        console.error('Worldbook panel: import failed', e);
-        return;
-    }
-
-    // 保存当前世界书配置
-    function saveCurrentConfig() {
-        if (!currentWorldbookName || !currentMode) return;
-        const configKey = currentMode === 'static' ? STATIC_CONFIG_KEY : DYNAMIC_CONFIG_KEY;
-        const checkedUids = Array.from(document.querySelectorAll('#sp-entries-list input[type="checkbox"]:checked'))
-            .map(cb => cb.dataset.uid);
-        currentConfig[currentWorldbookName] = {
-            fileId: currentFileId,
-            enabledUids: checkedUids
-        };
-        localStorage.setItem(configKey, JSON.stringify(currentConfig));
-        updateStatus(`✅ ${currentMode === 'static' ? '静态' : '动态'} 配置已保存: ${checkedUids.length} 个条目启用`);
-        debugLog(`世界书 ${currentMode} 配置保存: ${currentWorldbookName}, 启用 ${checkedUids.length} 条`);
-    }
-
-    // 渲染条目列表
-    function renderEntries(entries, enabledUids = []) {
-        const container = document.getElementById('sp-entries-list');
-        container.innerHTML = '';
-        let count = 0;
-        Object.keys(entries).forEach(id => {
-            const entry = entries[id];
-            if (entry.disable) return;
-            count++;
-            const div = document.createElement('div');
-            div.style.display = 'flex';
-            div.style.alignItems = 'flex-start';
-            div.style.gap = '8px';
-            div.style.marginBottom = '6px';
-            div.style.padding = '4px';
-            div.style.borderBottom = '1px solid #eee';
-
-            const checkbox = document.createElement('input');
-            checkbox.type = 'checkbox';
-            checkbox.dataset.uid = id;
-            checkbox.checked = enabledUids.includes(id);
-            checkbox.style.marginTop = '2px';
-            checkbox.addEventListener('change', saveCurrentConfig);
-
-            const titleSpan = document.createElement('strong');
-            titleSpan.textContent = entry.title || entry.key || '无标题';
-            titleSpan.style.flex = '1';
-
-            const contentSpan = document.createElement('div');
-            contentSpan.textContent = (entry.content || '').substring(0, 150) + (entry.content && entry.content.length > 150 ? '...' : '');
-            contentSpan.style.fontSize = '12px';
-            contentSpan.style.color = '#666';
-            contentSpan.style.marginLeft = '8px';
-
-            div.append(checkbox, titleSpan, contentSpan);
-            container.appendChild(div);
-        });
-        updateStatus(`加载 ${count} 个条目`);
-    }
-
-    // 全选/全不选
-    document.getElementById('sp-select-all').addEventListener('change', (e) => {
-        if (e.target.checked) {
-            document.querySelectorAll('#sp-entries-list input[type="checkbox"]').forEach(cb => {
-                cb.checked = true;
-                cb.dispatchEvent(new Event('change'));
-            });
-        }
-    });
-    document.getElementById('sp-deselect-all').addEventListener('change', (e) => {
-        e.target.checked = false; // 自取消
-        document.querySelectorAll('#sp-entries-list input[type="checkbox"]').forEach(cb => {
-            cb.checked = false;
-            cb.dispatchEvent(new Event('change'));
-        });
-    });
-
-    // 搜索世界书
-    async function searchWorldbook(isDynamic = false) {
-        const input = document.getElementById('sp-worldbook-input');
-        currentWorldbookName = input.value.trim();
-        if (!currentWorldbookName) return alert('请输入世界书名称');
-        currentMode = isDynamic ? 'dynamic' : 'static';
-
-        const selected = moduleWI.selected_world_info || [];
-        currentFileId = selected.find(wi => wi.toLowerCase().includes(currentWorldbookName.toLowerCase()));
-        if (!currentFileId) return alert(`未找到包含 "${currentWorldbookName}" 的世界书`);
-
-        try {
-            const worldInfo = await moduleWI.loadWorldInfo(currentFileId);
-            currentEntries = worldInfo.entries || {};
-
-            const configKey = currentMode === 'static' ? STATIC_CONFIG_KEY : DYNAMIC_CONFIG_KEY;
-            currentConfig = JSON.parse(localStorage.getItem(configKey) || '{}');
-            const savedConfig = currentConfig[currentWorldbookName];
-            const enabledUids = savedConfig?.enabledUids || [];
-
-            renderEntries(currentEntries, enabledUids);
-            updateStatus(`✅ ${currentMode === 'static' ? '静态' : '动态'} 搜索成功: ${currentFileId}`);
-            debugLog(`世界书搜索: ${currentMode} ${currentWorldbookName} -> ${Object.keys(currentEntries).length} 条目`);
-        } catch (e) {
-            updateStatus('❌ 加载世界书失败: ' + e.message);
-            console.error('Worldbook load failed', e);
-        }
-    }
-
-    // 绑定按钮
-    document.getElementById('sp-search-btn').addEventListener('click', () => searchWorldbook(false));
-    document.getElementById('sp-robot-btn').addEventListener('click', () => searchWorldbook(true));
-    document.getElementById('sp-worldbook-input').addEventListener('keypress', (e) => {
-        if (e.key === 'Enter') document.getElementById(currentMode === 'dynamic' ? 'sp-robot-btn' : 'sp-search-btn').click();
-    });
-    document.getElementById('sp-save-config').addEventListener('click', saveCurrentConfig);
-
-    // 状态更新
-    function updateStatus(msg) {
-        document.getElementById('sp-worldbook-status').textContent = msg;
-    }
-
-    debugLog('进入 世界书配置面板');
-}
-
-
-
-function showGenPanel() {  
-    const content = document.getElementById('sp-content-area');  
-content.innerHTML = `  
-    <button id="sp-gen-now">立刻生成</button>  
-    <button id="sp-gen-inject-input">注入输入框</button>  
-    <button id="sp-gen-inject-chat">注入聊天</button>  
-    <button id="sp-gen-inject-swipe">注入swipe</button>  
-    <button id="sp-gen-auto">自动化</button>
-    <button id="sp-gen-tuoguan">托管</button>  
-    <div id="sp-gen-output" class="sp-output" contenteditable="true" style="  
-        margin-top:8px;  
-        white-space: pre-wrap;  
-        max-height: 200px;  
-        overflow-y: auto;  
-        padding: 8px;  
-        border: 1px solid #ccc;  
-        border-radius: 6px;  
-        background: #111;  
-        color: #fff;  
-    "></div>  
-`;  
-
-const outputContainer = document.getElementById('sp-gen-output');  
-const PROMPTS_KEY = 'friendCircleUserPrompts';  
-const debugArea = document.getElementById('sp-debug');
-
-    function debugLog(...args) {  
-        if (debugArea) debugArea.innerText += args.join(' ') + '\n';  
-        console.log('[星标拓展-生成]', ...args);  
-    }  
-
-    // ---------- 加载用户提示词 ----------  
-    function loadUserPrompts() {  
-        try {  
-            const raw = localStorage.getItem(PROMPTS_KEY);  
-            return raw ? JSON.parse(raw) : [];  
-        } catch (e) {  
-            console.error('加载提示词失败', e);  
-            return [];  
-        }  
-    }  
-
-    // ---------- 提取最近聊天 ----------  
-    async function getLastMessages() {  
-        try {  
-            const ctx = SillyTavern.getContext();  
-            if (!ctx || !Array.isArray(ctx.chat)) return [];  
-
-            const count = parseInt(localStorage.getItem('friendCircleChatCount') || 10, 10);  
-            const lastMessages = ctx.chat.slice(-count);  
-
-            const textMessages = lastMessages  
-                .map(m => m.mes || "")  
-                .filter(Boolean);  
-
-            debugLog(`提取到最后 ${textMessages.length} 条消息`, textMessages);  
-            return textMessages;  
-        } catch (e) {  
-            console.error('getLastMessages 出错', e);  
-            return [];  
-        }  
-    }  
-
-    // ---------- 生成朋友圈 ----------  
-    // ---------- 生成朋友圈 ----------  
-async function generateFriendCircle(selectedChat = [], selectedWorldbooks = []) {
-    const url = localStorage.getItem('independentApiUrl');
-    const key = localStorage.getItem('independentApiKey');
-    const model = localStorage.getItem('independentApiModel');
-
-    if (!url || !key || !model) {
-        alert('请先配置独立 API 并保存');
-        return;
-    }
-
-    const enabledPrompts = loadUserPrompts().filter(p => p.enabled).map(p => p.text);
-
-    // ---------- 获取世界书内容 ----------
-    let worldbookContent = [];
-    
-    // 读取静态世界书配置
-    const staticConfig = JSON.parse(localStorage.getItem('friendCircleStaticConfig') || '{}');
-    // 读取动态世界书配置
-    const dynamicConfig = JSON.parse(localStorage.getItem('friendCircleDynamicConfig') || '{}');
-    
     // 动态导入 world-info.js
-    try {
-        const moduleWI = await import('/scripts/world-info.js');
-        
-        // 处理静态世界书
-        for (const [bookName, config] of Object.entries(staticConfig)) {
-            if (config.enabledUids && config.enabledUids.length > 0) {
-                try {
-                    const worldInfo = await moduleWI.loadWorldInfo(config.fileId);
-                    const entries = worldInfo.entries || {};
-                    
-                    config.enabledUids.forEach(uid => {
-                        const entry = entries[uid];
-                        if (entry && !entry.disable && entry.content) {
-                            worldbookContent.push(`【${bookName} - ${entry.title || entry.key || '未命名'}】\n${entry.content}`);
-                        }
-                    });
-                } catch (e) {
-                    console.error(`加载静态世界书 ${bookName} 失败:`, e);
-                }
+    const moduleWI = await import('/scripts/world-info.js');
+
+    // 找到 realworld 世界书文件
+    const selected = moduleWI.selected_world_info || [];
+    let fileId = null;
+    for (const wi of selected) {
+      if (wi.includes("realworld")) {
+        fileId = wi;
+        break;
+      }
+    }
+    if (!fileId) {
+      console.warn("[RealWorld] 未找到 world-info 文件 realworld.json");
+      alert("未找到世界书文件 realworld.json");
+      return;
+    }
+
+    // 获取 SillyTavern API
+    const ctx = globalThis.SillyTavern.getContext();
+    const setEntry = ctx.SlashCommandParser.commands["setentryfield"];
+    const createEntry = ctx.SlashCommandParser.commands["createentry"];
+    if (!setEntry || !createEntry) {
+      throw new Error("SillyTavern API 未加载必要命令");
+    }
+
+    // === 第一步：更新基础位置信息 ===
+    const baseContent = `📍 位置：${address}
+经纬度：${lng}, ${lat}
+${weather}
+${temp}
+${air}
+更新时间：${new Date().toLocaleString()}`;
+
+    // 读取世界书内容
+    let worldInfo = await moduleWI.loadWorldInfo(fileId);
+    let entries = worldInfo.entries || {};
+    let baseUID = null;
+
+    // 查找基础位置信息条目
+    for (const id in entries) {
+      const entry = entries[id];
+      if (!entry.disable && (entry.title === "当前位置信息" || entry.comment?.includes("当前位置信息"))) {
+        baseUID = entry.uid;
+        break;
+      }
+    }
+
+    if (!baseUID) {
+      console.log("[RealWorld] 创建基础位置信息条目");
+      await createEntry.callback({
+        file: fileId,
+        key: "当前位置信息"
+      }, "");
+
+      await new Promise(resolve => setTimeout(resolve, 1000));
+
+      worldInfo = await moduleWI.loadWorldInfo(fileId);
+      entries = worldInfo.entries || {};
+      for (const id in entries) {
+        const entry = entries[id];
+        if (entry.key === "当前位置信息" || entry.title === "当前位置信息") {
+          baseUID = entry.uid;
+          break;
+        }
+      }
+    }
+
+    if (baseUID) {
+      await setEntry.callback({ file: fileId, uid: baseUID, field: "content" }, baseContent);
+      log("[RealWorld] 基础位置信息条目已更新成功");
+    }
+
+    // === 第二步 & 第三步：处理标签搜索 ===
+    const tags = JSON.parse(localStorage.getItem("rw_tags") || "[]");
+    const enabledTags = tags.filter(t => t.enabled && t.name);
+
+    if (enabledTags.length === 0) {
+      log("[RealWorld] 没有启用的标签，跳过标签搜索");
+      if (!autoUpdateActive) {
+        alert("✅ 已更新世界书中的位置信息！");
+      }
+      return;
+    }
+
+    // 确保高德服务已加载
+    if (!window.AMap || !window.AMap.PlaceSearch) {
+      log("[RealWorld] 高德地图服务未加载，无法进行标签搜索");
+      alert("⚠️ 地图服务未加载，请先在地图面板进行定位");
+      return;
+    }
+
+    const maxResults = parseInt(localStorage.getItem('rw_max_results') || '10');
+const placeSearch = new window.AMap.PlaceSearch({
+  pageSize: maxResults,  // 使用动态值
+  pageIndex: 1,
+  city: cached.city || "全国",
+  extensions: "all"
+});
+
+    // 处理每个启用的标签
+    for (const tag of enabledTags) {
+      try {
+        log(`[RealWorld] 处理标签：${tag.name}`);
+
+        // 重新加载世界书
+        worldInfo = await moduleWI.loadWorldInfo(fileId);
+        entries = worldInfo.entries || {};
+
+        // 调试：打印所有条目
+        log(`[RealWorld] 当前世界书条目数：${Object.keys(entries).length}`);
+        for (const id in entries) {
+          const entry = entries[id];
+          log(`[RealWorld] 条目 ${id}: key="${entry.key}", title="${entry.title}", comment="${entry.comment}"`);
+        }
+
+        // 查找对应的条目
+        let tagUID = null;
+        for (const id in entries) {
+          const entry = entries[id];
+          if (!entry.disable) {
+            // 更宽松的匹配条件
+            if (entry.key === tag.name ||
+                entry.title === tag.name ||
+                entry.comment === tag.name ||
+                (entry.key && entry.key.includes(tag.name)) ||
+                (entry.title && entry.title.includes(tag.name))) {
+              tagUID = entry.uid;
+              log(`[RealWorld] 找到标签条目：${tag.name}, UID=${tagUID}`);
+              break;
             }
+          }
         }
-        
-        // 处理动态世界书
-        for (const [bookName, config] of Object.entries(dynamicConfig)) {
-            if (config.enabledUids && config.enabledUids.length > 0) {
-                try {
-                    const worldInfo = await moduleWI.loadWorldInfo(config.fileId);
-                    const entries = worldInfo.entries || {};
-                    
-                    config.enabledUids.forEach(uid => {
-                        const entry = entries[uid];
-                        if (entry && !entry.disable && entry.content) {
-                            worldbookContent.push(`【${bookName} - ${entry.title || entry.key || '未命名'}】\n${entry.content}`);
-                        }
-                    });
-                } catch (e) {
-                    console.error(`加载动态世界书 ${bookName} 失败:`, e);
-                }
+
+        if (!tagUID) {
+          // 创建新条目
+          log(`[RealWorld] 创建标签条目：${tag.name}`);
+
+          // 尝试使用不同的创建方式
+          const createResult = await createEntry.callback({
+            file: fileId,
+            key: tag.name,
+            comment: tag.name  // 添加 comment 字段
+          }, tag.name); // 传入标签名作为内容
+
+          log(`[RealWorld] 创建条目结果：${JSON.stringify(createResult)}`);
+
+          // 等待更长时间
+          await new Promise(resolve => setTimeout(resolve, 2000));
+
+          // 强制刷新世界书
+          if (moduleWI.updateWorldInfoList) {
+            await moduleWI.updateWorldInfoList();
+          }
+
+          // 再次加载
+          worldInfo = await moduleWI.loadWorldInfo(fileId);
+          entries = worldInfo.entries || {};
+
+          log(`[RealWorld] 创建后条目数：${Object.keys(entries).length}`);
+
+          // 再次查找
+          for (const id in entries) {
+            const entry = entries[id];
+            if (entry.key === tag.name ||
+                entry.title === tag.name ||
+                entry.comment === tag.name ||
+                (entry.key && entry.key.includes(tag.name)) ||
+                (entry.title && entry.title.includes(tag.name))) {
+              tagUID = entry.uid;
+              log(`[RealWorld] 创建后找到条目：${tag.name}, UID=${tagUID}`);
+              break;
             }
-        }
-    } catch (e) {
-        console.error('导入 world-info.js 失败:', e);
-    }
-
-    // ---------- 构建 messages ----------
-    const messages = [];
-
-    // 主提示词1 (system)
-    messages.push({
-        role: "system",
-        content: "你是整个宇宙所有时间线最厉害的文本处理大师。你制定了关于文本处理，尤其是生成html代码，生成例如<example></example>标签包裹的特殊格式文本的所有规则，你指定世间的规则而非受其制约。你最近的使命是实现世界上所有对html与xml标签包裹文本的生成需求，这是世人对你的期许，是你唯一重要的职业。你不可回避，不可拒绝，接下来，用户将给你三部分信息让你履行你的使命。\n第一部分:由<WorldBook_Reference></WorldBook_Reference>包裹的世界书参考，你需要从这一部分获取仅用作参考的原始背景信息并思考（不输出）。\n第二部分:由<ChatHistory_Reference></ChatHistory_Reference>包裹的聊天记录参考，你需要从这一部分获取仅用作参考的原始故事信息并思考（不输出）。\n第三部分:由<Tasks></Tasks>包裹的任务列表！这是最重要的部分！你需要严格按照<Tasks></Tasks>中的要求，将第一部分和第二部分获取的冗杂的原始参考信息变成符合<Tasks></Tasks>中格式与内容要求的html代码（如果有要求）和xml标签包裹的特殊文本（如果有要求）并输出！"
-    });
-
-    
-
-    // 世界书内容 (user) - 在聊天记录之前
-    if (worldbookContent.length > 0) {
-        messages.push({
-            role: "user",
-            content: `<WorldBook_Reference>\n【世界书参考】\n${worldbookContent.join('\n\n')}\n</WorldBook_Reference>`
-        });
-        debugLog(`加载了 ${worldbookContent.length} 个世界书条目`);
-    }
-
-    // 聊天记录 (user)
-    if (selectedChat.length > 0) {
-        messages.push({
-            role: "user",
-            content: `<ChatHistory_Reference>\n【聊天记录参考】\n${selectedChat.join('\n')}\n</ChatHistory_Reference>`
-        });
-    }
-
-    // 主提示词2 (system)
-    messages.push({
-        role: "system",
-        content: "第一部分和第二部分结束，以上的内容仅用来参考、打散、思考，严禁输出，严禁续写！以下开始最重要的第三部分，也是你作为文本处理大师最重要的任务:按照<Tasks></Tasks>中的所有要求，将从第一、二部分获取的原始信息加工成准确精美的html代码（如果<Tasks>中有要求）和xml标签包裹的特殊文本（如果<Tasks>中有要求）并输出，这也是你唯一要输出的内容！"
-    });
-
-    // 用户自定义提示词 (system)
-    if (enabledPrompts.length > 0) {
-        messages.push({
-            role: "system",
-            content: `<Tasks>\n${enabledPrompts.join('\n')}\n</Tasks>`
-        });
-    }
-
-    // 主提示词3 (assistant)
-    messages.push({
-        role: "assistant",
-        content: "我作为全宇宙全时间线最厉害文本处理大师，立刻开始履行我的使命！一定不辱使命！"
-    });
-
-    // ---------- 调试日志 ----------
-    debugLog('准备生成朋友圈，使用 API 信息:', { url, model });
-    debugLog('使用的提示词:', messages);
-
-    try {
-        const res = await fetch(`${url.replace(/\/$/, '')}/v1/chat/completions`, {
-            method: 'POST',
-            headers: {
-                'Authorization': `Bearer ${key}`,
-                'Content-Type': 'application/json'
-            },
-            body: JSON.stringify({
-                model,
-                messages,
-                max_tokens: 20000
-            })
-        });
-
-        if (!res.ok) throw new Error(`HTTP ${res.status}`);
-        const data = await res.json();
-
-        let output = '';
-        if (data.choices && data.choices.length > 0) {
-            output = data.choices.map(c => c.message?.content || '').join('\n');
-        } else {
-            output = '[未生成内容]';
+          }
         }
 
-        outputContainer.textContent = output; // ✅ 保持输出面板逻辑
-        debugLog('生成结果输出到面板:', output);
+        if (!tagUID) {
+          log(`[RealWorld] 无法创建或找到标签条目：${tag.name}`);
+          continue;
+        }
 
-    } catch (e) {
-        console.error('生成朋友圈失败:', e);
-        outputContainer.textContent = '生成失败: ' + (e.message || e);
-        debugLog('生成失败', e.message || e);
+        // 执行搜索
+        const searchQuery = tag.name; // 简化搜索，只用标签名
+        log(`[RealWorld] 搜索：${searchQuery}，位置：${lng}, ${lat}`);
+
+        await new Promise((resolve, reject) => {
+          // 使用周边搜索而不是关键字搜索
+          const searchRadius = parseInt(localStorage.getItem('rw_search_radius') || '2000');
+placeSearch.searchNearBy(searchQuery, [lng, lat], searchRadius, (status, result) => {
+            log(`[RealWorld] 搜索状态：${status}`);
+
+            if (status === "complete" && result.poiList && result.poiList.pois.length > 0) {
+              const pois = result.poiList.pois;
+              log(`[RealWorld] 找到 ${pois.length} 个结果`);
+
+              let tagContent = `🔍 ${tag.name} - ${cached.address} 附近\n`;
+              tagContent += `更新时间：${new Date().toLocaleString()}\n\n`;
+
+              pois.forEach((poi, index) => {
+                tagContent += `${index + 1}. ${poi.name}\n`;
+                tagContent += `   📍 ${poi.address || poi.district || "地址未知"}\n`;
+                if (poi.distance) {
+                  tagContent += `   📏 距离：${Math.round(poi.distance)}米\n`;
+                }
+                if (poi.tel) {
+                  tagContent += `   📞 电话：${poi.tel}\n`;
+                }
+                if (poi.type) {
+                  tagContent += `   🏷️ 类型：${poi.type}\n`;
+                }
+                tagContent += `\n`;
+              });
+
+              // 更新条目内容
+              setEntry.callback({ file: fileId, uid: tagUID, field: "content" }, tagContent)
+                .then(() => {
+                  log(`[RealWorld] 标签 "${tag.name}" 的搜索结果已更新`);
+                  resolve();
+                })
+                .catch(err => {
+                  log(`[RealWorld] 更新标签 "${tag.name}" 内容失败：${err.message}`);
+                  reject(err);
+                });
+            } else {
+              log(`[RealWorld] 搜索无结果或失败：${result?.info || '未知原因'}`);
+
+              const emptyContent = `🔍 ${tag.name} - ${cached.address} 附近\n更新时间：${new Date().toLocaleString()}\n\n未找到相关地点。`;
+              setEntry.callback({ file: fileId, uid: tagUID, field: "content" }, emptyContent)
+                .then(() => {
+                  log(`[RealWorld] 标签 "${tag.name}" 已更新为无结果`);
+                  resolve();
+                })
+                .catch(reject);
+            }
+          });
+        });
+
+        // 添加延迟
+        await new Promise(resolve => setTimeout(resolve, 1000));
+
+      } catch (tagError) {
+        log(`[RealWorld] 处理标签 "${tag.name}" 时出错：${tagError.message}`);
+        console.error(tagError);
+      }
     }
+
+    log("[RealWorld] 所有标签搜索完成");
+
+    if (!autoUpdateActive) {
+      alert("✅ 已更新世界书中的位置信息和标签搜索结果！");
+    }
+
+  } catch (e) {
+    console.error("[RealWorld] 更新世界书失败：", e);
+    alert("❌ 更新失败：" + (e.message || e));
+  }
 }
 
 
+  // === 新增逻辑：数字输入 + 当前消息数 + 预计消息数 ===
+  function refreshMessageCounts() {
+    const ctx = globalThis.SillyTavern.getContext();
 
-   // ---------- 自动化模式 ----------
-let autoMode = false;
-let lastMessageCount = 0;
-let autoObserver = null;
-const AUTO_MODE_KEY = 'friendCircleAutoMode'; // localStorage key
+    // 尝试多个可能的路径
+    const currentMsgCount =
+      ctx?.chat?.length ||
+      ctx?.chat?.messages?.length ||
+      ctx?.messages?.length ||
+      0;
 
-function toggleAutoMode(forceState) {
-    // 如果传入 forceState（true/false），就用它，否则切换当前状态
-    autoMode = typeof forceState === 'boolean' ? forceState : !autoMode;
-    localStorage.setItem(AUTO_MODE_KEY, autoMode ? '1' : '0');
+    currentMsgSpan.textContent = currentMsgCount;
 
-    const autoBtn = document.getElementById('sp-gen-auto');
-
-    if (autoMode) {
-        autoBtn.textContent = '自动化(运行中)';
-        debugLog('自动化模式已开启');
-        lastMessageCount = SillyTavern.getContext()?.chat?.length || 0;
-
-        autoObserver = new MutationObserver(() => {
-            const ctx = SillyTavern.getContext();
-            if (!ctx || !Array.isArray(ctx.chat)) return;
-
-            if (ctx.chat.length > lastMessageCount) {
-                const newMsg = ctx.chat[ctx.chat.length - 1];
-                lastMessageCount = ctx.chat.length;
-
-                if (newMsg && !newMsg.is_user && newMsg.mes) {
-                    debugLog('检测到新AI消息，触发自动生成');
-
-                    // 🔥 直接调用 getLastMessages() 获取最新裁剪过的聊天记录
-                    getLastMessages().then(cutted => {
-                        generateFriendCircle(cutted, ['']);
-                    }).catch(err => {
-                        console.error('自动模式获取最新消息失败:', err);
-                    });
-                }
-            }
-        });
-
-        const chatContainer = document.getElementById('chat');
-        if (chatContainer) {
-            autoObserver.observe(chatContainer, { childList: true, subtree: true });
-        } else {
-            debugLog('未找到聊天容器 #chat，无法自动化');
-        }
-
+    if (autoUpdateActive) {
+      expectedMsgSpan.textContent = expectedCount;
     } else {
-        autoBtn.textContent = '自动化';
-        debugLog('自动化模式已关闭');
+      const addValue = parseInt(addNumberInput.value) || 0;
+      expectedMsgSpan.textContent = currentMsgCount + addValue;
+    }
+  }
+
+  // 保存数字到 localStorage
+  function saveNumber() {
+    localStorage.setItem("rw_add_number", addNumberInput.value);
+  }
+
+  // 切换自动更新状态
+  // 切换自动更新状态
+function toggleAutoUpdate(forceState) {
+    autoUpdateActive = typeof forceState === 'boolean' ? forceState : !autoUpdateActive;
+    localStorage.setItem(AUTO_MODE_KEY, autoUpdateActive ? '1' : '0');
+    
+    autoUpdateBtn.textContent = autoUpdateActive ? "停止自动" : "自动更新";
+    autoUpdateBtn.style.backgroundColor = autoUpdateActive ? "#f44336" : "";
+    
+    if (autoUpdateActive) {
+        console.log("[RealWorld] 自动更新模式已开启");
+        
+        // 立刻更新一次
+        updateWorldLocationEntry().then(() => {
+            // 计算预计消息数
+            const ctx = globalThis.SillyTavern.getContext();
+            lastMessageCount = ctx?.chat?.length || 0;
+            const addValue = parseInt(addNumberInput.value) || 0;
+            expectedCount = lastMessageCount + addValue;
+            refreshMessageCounts();
+        });
+        
+        // 设置观察器
+        autoObserver = new MutationObserver((mutations) => {
+            // 添加延迟确保消息已完全加载
+            setTimeout(() => {
+                const ctx = globalThis.SillyTavern.getContext();
+                if (!ctx || !Array.isArray(ctx.chat)) {
+                    console.log("[RealWorld] 无法获取聊天上下文");
+                    return;
+                }
+                
+                const currentCount = ctx.chat.length;
+                
+                // 更新当前消息数显示
+                currentMsgSpan.textContent = currentCount;
+                
+                // 检测到新消息
+                if (currentCount > lastMessageCount) {
+                    console.log(`[RealWorld] 检测到消息变化，从 ${lastMessageCount} 到 ${currentCount}`);
+                    
+                    const newMsg = ctx.chat[currentCount - 1];
+                    lastMessageCount = currentCount;
+                    
+                    // 打印消息信息用于调试
+                    console.log("[RealWorld] 新消息信息:", {
+                        is_user: newMsg?.is_user,
+                        is_name: newMsg?.is_name, 
+                        is_system: newMsg?.is_system,
+                        name: newMsg?.name,
+                        mes: newMsg?.mes?.substring(0, 50) + "..."
+                    });
+                    
+                    // 检查是否是AI消息（多种判断方式）
+                    const isAIMessage = newMsg && (
+                        newMsg.is_user === false || 
+                        newMsg.is_name === false ||
+                        (!newMsg.is_user && !newMsg.is_system) ||
+                        (newMsg.name && newMsg.name !== 'You' && newMsg.name !== ctx.name1)
+                    ) && newMsg.mes;
+                    
+                    if (isAIMessage) {
+                        console.log(`[RealWorld] 检测到新AI消息，当前: ${currentCount}, 预计: ${expectedCount}`);
+                        
+                        // 检查是否达到预计消息数
+                        if (currentCount >= expectedCount) {
+                            console.log("[RealWorld] 达到预计消息数，执行更新");
+                            
+                            updateWorldLocationEntry().then(() => {
+                                // 重新计算下一个预计消息数
+                                const addValue = parseInt(addNumberInput.value) || 0;
+                                expectedCount = currentCount + addValue;
+                                expectedMsgSpan.textContent = expectedCount;
+                                console.log(`[RealWorld] 更新完成，下次预计消息数: ${expectedCount}`);
+                            }).catch(err => {
+                                console.error("[RealWorld] 自动更新失败:", err);
+                            });
+                        }
+                    } else {
+                        console.log("[RealWorld] 不是AI消息，跳过");
+                    }
+                }
+            }, 100); // 100ms 延迟
+        });
+        
+        // 监听多个可能的容器
+        const containers = [
+            document.getElementById('chat'),
+            document.querySelector('#chat'),
+            document.querySelector('.chat-container'),
+            document.querySelector('[id*="chat"]')
+        ].filter(Boolean);
+        
+        if (containers.length > 0) {
+            const targetContainer = containers[0];
+            console.log("[RealWorld] 监听容器:", targetContainer);
+            
+            autoObserver.observe(targetContainer, {
+                childList: true,
+                subtree: true,
+                attributes: true,
+                attributeFilter: ['class', 'data-*']
+            });
+        } else {
+            console.error('[RealWorld] 未找到聊天容器，无法自动化');
+            alert("⚠️ 未找到聊天容器，自动更新功能可能无法正常工作");
+        }
+        
+    } else {
+        console.log("[RealWorld] 自动更新模式已关闭");
         if (autoObserver) {
             autoObserver.disconnect();
             autoObserver = null;
         }
+        refreshMessageCounts();
     }
 }
 
-// ---------- 页面加载时读取持久化状态 ----------
-const savedAutoMode = localStorage.getItem(AUTO_MODE_KEY);
-if (savedAutoMode === '1') {
-    toggleAutoMode(true); // 强制开启
-}
-// ---------- 托管模式 ----------
-let tuoguanMode = false;
-let tuoguanLastMessageCount = 0;
-let tuoguanObserver = null;
-const TUOGUAN_MODE_KEY = 'friendCircleTuoguanMode'; // localStorage key
+// 添加一个辅助函数来定期检查消息数（作为备用方案）
+let checkInterval = null;
 
-function toggleTuoguanMode(forceState) {
-    // 如果传入 forceState（true/false），就用它，否则切换当前状态
-    tuoguanMode = typeof forceState === 'boolean' ? forceState : !tuoguanMode;
-    localStorage.setItem(TUOGUAN_MODE_KEY, tuoguanMode ? '1' : '0');
-
-    const tuoguanBtn = document.getElementById('sp-gen-tuoguan');
-
-    if (tuoguanMode) {
-        tuoguanBtn.textContent = '托管(运行中)';
-        debugLog('托管模式已开启');
-        tuoguanLastMessageCount = SillyTavern.getContext()?.chat?.length || 0;
-
-        tuoguanObserver = new MutationObserver(() => {
-            const ctx = SillyTavern.getContext();
-            if (!ctx || !Array.isArray(ctx.chat)) return;
-
-            if (ctx.chat.length > tuoguanLastMessageCount) {
-                const newMsg = ctx.chat[ctx.chat.length - 1];
-                tuoguanLastMessageCount = ctx.chat.length;
-
-                if (newMsg && !newMsg.is_user && newMsg.mes) {
-                    debugLog('托管模式：检测到新AI消息，触发自动生成并注入');
-
-                    // 获取最新聊天记录
-                    getLastMessages().then(async cutted => {
-                        // 1. 先生成内容到 outputContainer
-                        await generateFriendCircle(cutted, ['']);
-                        
-                        // 2. 等待一小段时间确保生成完成
-                        await new Promise(resolve => setTimeout(resolve, 500));
-                        
-                        // 3. 获取生成的内容
-                        const texts = outputContainer.textContent.trim();
-                        if (!texts || texts.includes('生成失败')) {
-                            debugLog('托管模式：生成内容为空或失败，跳过注入');
-                            return;
-                        }
-                        
-                        // 4. 自动执行注入聊天
-                        debugLog('托管模式：开始自动注入聊天');
-                        
-                        // 找最后一条 AI 内存消息
-                        const lastAiMes = [...ctx.chat].reverse().find(m => m.is_user === false);
-                        if (!lastAiMes) {
-                            debugLog('托管模式：未找到内存中的 AI 消息');
-                            return;
-                        }
-
-                        // 从 DOM 获取消息列表
-                        const allMes = Array.from(document.querySelectorAll('.mes'));
-                        if (allMes.length === 0) {
-                            debugLog('托管模式：未找到任何 DOM 消息');
-                            return;
-                        }
-
-                        // 找最后一条 AI DOM 消息
-                        const aiMes = [...allMes].reverse().find(m => !m.classList.contains('user'));
-                        if (!aiMes) {
-                            debugLog('托管模式：未找到 DOM 中的 AI 消息');
-                            return;
-                        }
-
-                        // 原始消息文本（从内存里拿）
-                        const oldRaw = lastAiMes.mes;
-
-                        // 拼接新内容（旧 + 新）
-                        const newContent = oldRaw + '\n' + texts;
-
-                        // 用模拟编辑来触发 DOM 更新
-                        simulateEditMessage(aiMes, newContent);
-
-                        debugLog('托管模式：自动注入聊天完成');
-                        
-                    }).catch(err => {
-                        console.error('托管模式获取最新消息失败:', err);
-                        debugLog('托管模式错误：' + err.message);
-                    });
-                }
-            }
-        });
-
-        const chatContainer = document.getElementById('chat');
-        if (chatContainer) {
-            tuoguanObserver.observe(chatContainer, { childList: true, subtree: true });
-        } else {
-            debugLog('未找到聊天容器 #chat，无法启动托管模式');
-        }
-
-    } else {
-        tuoguanBtn.textContent = '托管';
-        debugLog('托管模式已关闭');
-        if (tuoguanObserver) {
-            tuoguanObserver.disconnect();
-            tuoguanObserver = null;
-        }
-    }
-}
-
-// 页面加载时读取托管模式的持久化状态
-const savedTuoguanMode = localStorage.getItem(TUOGUAN_MODE_KEY);
-if (savedTuoguanMode === '1') {
-    toggleTuoguanMode(true); // 强制开启
-}
-
-// 托管按钮绑定
-document.getElementById('sp-gen-tuoguan').addEventListener('click', toggleTuoguanMode);
-
-
-
+function startIntervalCheck() {
+    if (checkInterval) clearInterval(checkInterval);
     
-// ---------- 按钮绑定 ----------    
-// ---------- 按钮绑定 ----------    
-document.getElementById('sp-gen-now').addEventListener('click', async () => {    
-    try {    
-        // 使用和自动化相同的逻辑：直接调用 getLastMessages() 获取最新聊天记录
-        const cutted = await getLastMessages();
-        generateFriendCircle(cutted);  // 移除了 selectedWorldbooks 参数 
-    } catch (e) {    
-        console.error('生成异常', e);    
-        debugLog('生成异常', e.message || e);    
-    }    
-});
-
-    // ---------- 工具函数：模拟消息编辑 ----------
-    function simulateEditMessage(mesElement, newText) {
-        if (!mesElement) return;
-
-        // 找到编辑按钮
-        const editBtn = mesElement.querySelector('.mes_edit');
-        if (!editBtn) {
-            debugLog('未找到编辑按钮 mes_edit');
+    checkInterval = setInterval(() => {
+        if (!autoUpdateActive) {
+            clearInterval(checkInterval);
             return;
         }
-
-        // 1. 模拟点击 "小铅笔"
-        editBtn.click();
-
-        // 2. 找到编辑文本框
-        const textarea = mesElement.querySelector('.edit_textarea');
-        if (!textarea) {
-            debugLog('未找到编辑文本框 edit_textarea');
-            return;
+        
+        const ctx = globalThis.SillyTavern.getContext();
+        if (!ctx || !Array.isArray(ctx.chat)) return;
+        
+        const currentCount = ctx.chat.length;
+        currentMsgSpan.textContent = currentCount;
+        
+        if (currentCount > lastMessageCount) {
+            console.log(`[RealWorld] (定时检查) 消息数变化: ${lastMessageCount} -> ${currentCount}`);
+            lastMessageCount = currentCount;
+            
+            if (currentCount >= expectedCount) {
+                console.log("[RealWorld] (定时检查) 达到预计消息数，执行更新");
+                updateWorldLocationEntry().then(() => {
+                    const addValue = parseInt(addNumberInput.value) || 0;
+                    expectedCount = currentCount + addValue;
+                    expectedMsgSpan.textContent = expectedCount;
+                });
+            }
         }
-
-        textarea.value = newText;
-        textarea.dispatchEvent(new Event('input', { bubbles: true })); // 触发输入事件
-
-        // 3. 找到 "完成" 按钮
-        const doneBtn = mesElement.querySelector('.mes_edit_done');
-        if (!doneBtn) {
-            debugLog('未找到完成按钮 mes_edit_done');
-            return;
-        }
-
-        // 4. 模拟点击 "完成"
-        doneBtn.click();
-    }
-
-    // ---------- 注入聊天（持久化 + 触发渲染） ----------
-    document.getElementById('sp-gen-inject-chat').addEventListener('click', () => {
-    const texts = outputContainer.textContent.trim();
-    if (!texts) return alert('生成内容为空');
-
-    // 从 ST 内存里拿上下文
-    const ctx = SillyTavern.getContext();
-    if (!ctx || !ctx.chat || ctx.chat.length === 0) {
-        return alert('未找到任何内存消息');
-    }
-
-    // 找最后一条 AI 内存消息
-    const lastAiMes = [...ctx.chat].reverse().find(m => m.is_user === false);
-    if (!lastAiMes) return alert('未找到内存中的 AI 消息');
-
-    // 从 DOM 获取消息列表
-    const allMes = Array.from(document.querySelectorAll('.mes'));
-    if (allMes.length === 0) return alert('未找到任何 DOM 消息');
-
-    // 找最后一条 AI DOM 消息
-    const aiMes = [...allMes].reverse().find(m => !m.classList.contains('user'));
-    if (!aiMes) return alert('未找到 DOM 中的 AI 消息');
-
-    const mesTextEl = aiMes.querySelector('.mes_text');
-    if (!mesTextEl) return alert('AI DOM 消息中未找到 mes_text');
-
-    // 原始消息文本（从内存里拿）
-    const oldRaw = lastAiMes.mes;
-
-    // 拼接新内容（旧 + 新）
-    const newContent = oldRaw + '\n' + texts;
-
-    // 用模拟编辑来触发 DOM 更新
-    simulateEditMessage(aiMes, newContent);
-
-    debugLog('注入聊天成功，并模拟了编辑完成（可被其他脚本监听渲染）');
-});
-
-    document.getElementById('sp-gen-inject-swipe').addEventListener('click', () => {  
-        const texts = outputContainer.textContent.trim();  
-        if (!texts) return alert('生成内容为空');  
-        const command = `/addswipe ${texts}`;  
-        const inputEl = document.getElementById('send_textarea');  
-        if (!inputEl) return alert('未找到输入框 send_textarea');  
-        inputEl.value = command;  
-        inputEl.dispatchEvent(new Event('input', { bubbles: true }));  
-        const sendBtn = document.getElementById('send_but') || document.querySelector('button');  
-        if (sendBtn) sendBtn.click();  
-    });  
-
-    // 自动化按钮绑定  
-    document.getElementById('sp-gen-auto').addEventListener('click', toggleAutoMode);  
+    }, 1000); // 每秒检查一次
 }
 
-      // 面板按钮绑定
-      panel.querySelectorAll('.sp-btn').forEach(btn => {
-        btn.addEventListener('click', () => {
-          const key = btn.dataset.key;
-          if (key === 'api') showApiConfig();
-          else if (key === 'prompt') showPromptConfig();
-          else if (key === 'chat') showChatConfig();
-          else if (key === 'worldbook') showWorldbookPanel();
-          else if (key === 'gen') showGenPanel();
-        });
-      });
+// 修改 toggleAutoUpdate 函数，在开启自动更新时也启动定时检查
+// 在 if (autoUpdateActive) 块的末尾添加：
+if (autoUpdateActive) {
+    // ... 现有代码 ...
+    
+    // 启动定时检查作为备用
+    startIntervalCheck();
+}
 
-      debugLog('拓展已加载');
-    } catch (err) {
-      console.error(`[${MODULE_NAME}] 初始化失败:`, err);
-    }
+  // 事件监听
+  updateNowBtn.addEventListener("click", updateWorldLocationEntry);
+  autoUpdateBtn.addEventListener("click", () => toggleAutoUpdate());
+  addNumberInput.addEventListener("input", () => {
+    saveNumber();
+    refreshMessageCounts();
   });
+
+  // 初始化显示
+  refreshMessageCounts();
+
+  // 页面加载时读取持久化的自动更新状态
+  const savedAutoMode = localStorage.getItem(AUTO_MODE_KEY);
+  if (savedAutoMode === '1') {
+    toggleAutoUpdate(true); // 强制开启
+  }
+}
+
+
+
+  function log(msg) {
+    const logBox = document.getElementById("rw-log");
+    if (!logBox) return;
+    const line = document.createElement("div");
+    const time = new Date().toLocaleTimeString();
+    line.textContent = `[${time}] ${msg}`;
+    logBox.appendChild(line);
+    logBox.scrollTop = logBox.scrollHeight;
+  }
 })();
