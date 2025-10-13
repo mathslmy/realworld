@@ -17,105 +17,145 @@ import { saveSettingsDebounced } from "../../../../script.js";
 
 ready(() => {
   try {
-    const ctx = SillyTavern.getContext();
+    const ctx = getContext();
 
-    // 初始化设置
-    if (!ctx.extensionSettings[MODULE_NAME]) {
-      ctx.extensionSettings[MODULE_NAME] = {
+    if (!extension_settings[MODULE_NAME]) {
+      extension_settings[MODULE_NAME] = {
         apiConfig: { amapKey: "", amapSecret: "" },
       };
-      if (ctx.saveSettingsDebounced) ctx.saveSettingsDebounced();
+      saveSettingsDebounced();
     }
 
-    // 防重复
-    if (document.getElementById("realworld-button")) return;
+    if (!document.getElementById("realworld-button")) {
+      // 直接创建按钮，不等待load事件
+      const btn = document.createElement("div");
+      btn.id = "realworld-button";
+      btn.title = "RealWorld 扩展";
+      btn.innerText = "🌈";
+      btn.classList.add("realworld-fab");
 
-    // 创建按钮
-    const btn = document.createElement("div");
-    btn.id = "realworld-button";
-    btn.title = "RealWorld 扩展";
-    btn.innerText = "🌈";
-    btn.classList.add("realworld-fab");
-
-    // 样式
-    Object.assign(btn.style, {
-      position: "fixed",
-      zIndex: 9999,
-      width: "32px",
-      height: "32px",
-      background: "transparent",
-      borderRadius: "50%",
-      display: "flex",
-      alignItems: "center",
-      justifyContent: "center",
-      cursor: "pointer",
-      boxShadow: "0 2px 6px rgba(0,0,0,0.3)",
-    });
-
-    // 恢复位置
-    const savedPosition = JSON.parse(localStorage.getItem("rw_button_position") || "null");
-    if (savedPosition) {
-      btn.style.left = savedPosition.left + "px";
-      btn.style.top = savedPosition.top + "px";
-    } else {
-      btn.style.left = (window.innerWidth / 2 - 25) + "px";
-      btn.style.top = (window.innerHeight / 2 - 25) + "px";
-    }
-
-    document.body.appendChild(btn);
-
-    // 拖动逻辑
-    let isDragging = false;
-    let dragStartX, dragStartY, buttonStartX, buttonStartY, hasMoved = false;
-
-    function startDrag(e) {
-      isDragging = true;
-      hasMoved = false;
-      const clientX = e.type.includes("touch") ? e.touches[0].clientX : e.clientX;
-      const clientY = e.type.includes("touch") ? e.touches[0].clientY : e.clientY;
-      dragStartX = clientX;
-      dragStartY = clientY;
-      const rect = btn.getBoundingClientRect();
-      buttonStartX = rect.left;
-      buttonStartY = rect.top;
-      btn.style.cursor = "grabbing";
-      btn.style.transition = "none";
-    }
-
-    function drag(e) {
-      if (!isDragging) return;
-      e.preventDefault();
-      const clientX = e.type.includes("touch") ? e.touches[0].clientX : e.clientX;
-      const clientY = e.type.includes("touch") ? e.touches[0].clientY : e.clientY;
-      const deltaX = clientX - dragStartX;
-      const deltaY = clientY - dragStartY;
-      if (Math.abs(deltaX) > 5 || Math.abs(deltaY) > 5) hasMoved = true;
-      let newX = buttonStartX + deltaX;
-      let newY = buttonStartY + deltaY;
-      newX = Math.max(0, Math.min(window.innerWidth - btn.offsetWidth, newX));
-      newY = Math.max(0, Math.min(window.innerHeight - btn.offsetHeight, newY));
-      btn.style.left = newX + "px";
-      btn.style.top = newY + "px";
-    }
-
-    function endDrag() {
-      if (!isDragging) return;
-      isDragging = false;
+      // 样式部分
+      btn.style.position = "fixed";
+      btn.style.zIndex = 99999;
+      btn.style.width = "32px";
+      btn.style.height = "32px";
+      btn.style.background = "transparent";
+      btn.style.borderRadius = "50%";
+      btn.style.display = "flex";
+      btn.style.alignItems = "center";
+      btn.style.justifyContent = "center";
       btn.style.cursor = "pointer";
-      btn.style.transition = "";
-      const rect = btn.getBoundingClientRect();
-      localStorage.setItem("rw_button_position", JSON.stringify({ left: rect.left, top: rect.top }));
+      btn.style.boxShadow = "0 2px 6px rgba(0,0,0,0.3)";
+
+      // 位置恢复
+      const savedPosition = JSON.parse(localStorage.getItem("rw_button_position") || "null");
+      if (savedPosition &&
+          savedPosition.left >= 0 && savedPosition.top >= 0 &&
+          savedPosition.left < window.innerWidth && savedPosition.top < window.innerHeight) {
+        btn.style.left = savedPosition.left + "px";
+        btn.style.top = savedPosition.top + "px";
+      } else {
+        btn.style.left = (window.innerWidth / 2 - 25) + "px";
+        btn.style.top = (window.innerHeight / 2 - 25) + "px";
+      }
+
+      document.body.appendChild(btn);
+
+      // ------- 拖动逻辑写在这里 --------
+      let isDragging = false;
+      let dragStartX = 0;
+      let dragStartY = 0;
+      let buttonStartX = 0;
+      let buttonStartY = 0;
+      let hasMoved = false;
+
+      btn.addEventListener("touchstart", (e) => e.preventDefault(), { passive: false });
+
+      function startDrag(e) {
+        isDragging = true;
+        hasMoved = false;
+        const clientX = e.type.includes("touch") ? e.touches[0].clientX : e.clientX;
+        const clientY = e.type.includes("touch") ? e.touches[0].clientY : e.clientY;
+        dragStartX = clientX;
+        dragStartY = clientY;
+        const rect = btn.getBoundingClientRect();
+        buttonStartX = rect.left;
+        buttonStartY = rect.top;
+        btn.style.cursor = "grabbing";
+        btn.style.transition = "none";
+      }
+
+      function drag(e) {
+        if (!isDragging) return;
+        e.preventDefault();
+        const clientX = e.type.includes("touch") ? e.touches[0].clientX : e.clientX;
+        const clientY = e.type.includes("touch") ? e.touches[0].clientY : e.clientY;
+        const deltaX = clientX - dragStartX;
+        const deltaY = clientY - dragStartY;
+        if (Math.abs(deltaX) > 5 || Math.abs(deltaY) > 5) hasMoved = true;
+
+        let newX = buttonStartX + deltaX;
+        let newY = buttonStartY + deltaY;
+
+        newX = Math.max(0, Math.min(window.innerWidth - btn.offsetWidth, newX));
+        newY = Math.max(0, Math.min(window.innerHeight - btn.offsetHeight, newY));
+
+        btn.style.left = newX + "px";
+        btn.style.top = newY + "px";
+      }
+
+      function endDrag(e) {
+        if (!isDragging) return;
+        isDragging = false;
+        btn.style.cursor = "pointer";
+        btn.style.transition = "";
+
+        const rect = btn.getBoundingClientRect();
+        localStorage.setItem("rw_button_position", JSON.stringify({ left: rect.left, top: rect.top }));
+
+        if (!hasMoved) {
+          const panel = document.getElementById("realworld-panel");
+          if (panel) {
+            panel.style.display = panel.style.display === "none" ? "flex" : "none";
+          } else {
+            createPanel();
+          }
+        }
+      }
+
+      btn.addEventListener("mousedown", startDrag);
+      document.addEventListener("mousemove", drag);
+      document.addEventListener("mouseup", endDrag);
+
+      btn.addEventListener("touchstart", startDrag);
+      document.addEventListener("touchmove", drag, { passive: false });
+      document.addEventListener("touchend", endDrag);
+
+      window.addEventListener("resize", () => {
+        const rect = btn.getBoundingClientRect();
+        let newX = rect.left;
+        let newY = rect.top;
+        let needUpdate = false;
+
+        if (rect.right > window.innerWidth) {
+          newX = window.innerWidth - btn.offsetWidth;
+          needUpdate = true;
+        }
+        if (rect.bottom > window.innerHeight) {
+          newY = window.innerHeight - btn.offsetHeight;
+          needUpdate = true;
+        }
+
+        if (needUpdate) {
+          btn.style.left = newX + "px";
+          btn.style.top = newY + "px";
+          localStorage.setItem("rw_button_position", JSON.stringify({ left: newX, top: newY }));
+        }
+      });
     }
-
-    btn.addEventListener("mousedown", startDrag);
-    document.addEventListener("mousemove", drag);
-    document.addEventListener("mouseup", endDrag);
-    btn.addEventListener("touchstart", startDrag);
-    document.addEventListener("touchmove", drag, { passive: false });
-    document.addEventListener("touchend", endDrag);
-
+    
   } catch (err) {
-    console.error("RealWorld init failed:", err);
+    console.error('RealWorld extension initialization failed:', err);
   }
 });
   function createPanel() {
