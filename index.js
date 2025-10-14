@@ -1,6 +1,6 @@
 import { extension_settings, getContext, loadExtensionSettings } from "../../../extensions.js";
 import { saveSettingsDebounced } from "../../../../script.js";
-
+import { background_settings } from "../../../../scripts/backgrounds.js";
 (function () {
   const MODULE_NAME = "RealWorld";
 
@@ -240,7 +240,13 @@ ready(() => {
 
     log("RealWorld 面板已创建");
   }
-
+// 在文件顶部添加天气缓存
+let weatherCache = {
+  weather: null,
+  temperature: null,
+  city: null,
+  lastUpdate: null
+};
   function loadSubPanel(key) {
     const content = document.getElementById("rw-content-area");
     if (!content) return;
@@ -832,7 +838,7 @@ function extractPlaceName(regeocode) {
     }
   }
 
-  function getWeatherInfo(adcode) {
+ function getWeatherInfo(adcode) {
   const weatherSpan = document.getElementById("rw-weather");
   const tempSpan = document.getElementById("rw-temp");
   const airSpan = document.getElementById("rw-air");
@@ -841,8 +847,20 @@ function extractPlaceName(regeocode) {
     const weather = new AMap.Weather();
     weather.getLive(adcode, (err, data) => {
       if (!err && data) {
+        // 更新页面显示
         weatherSpan.textContent = `天气：${data.weather}`;
         tempSpan.textContent = `气温：${data.temperature}°C`;
+
+        // 更新天气缓存
+        weatherCache.weather = data.weather;
+        weatherCache.temperature = data.temperature;
+        weatherCache.city = data.city || currentCity;
+        weatherCache.lastUpdate = new Date();
+        
+        // 保存到 localStorage
+        localStorage.setItem('rw_weather_cache', JSON.stringify(weatherCache));
+        
+        log(`[RealWorld] 天气信息已缓存: ${data.weather}, ${data.temperature}°C`);
 
         // 保存城市信息到缓存
         const cached = loadState();
@@ -1124,6 +1142,12 @@ async function performSearch(keyword) {
         <span>当前消息数：<span id="rw-current-msg">0</span></span>
         <span>预计消息数：<span id="rw-expected-msg">0</span></span>
       </div>
+      <!-- 新增：背景更新按钮行 -->
+      <div class="rw-row" style="gap: 8px; align-items: center; margin-top: 8px;">
+        <button id="rw-update-background-btn" class="rw-btn-mini">立刻更新背景</button>
+        <button id="rw-auto-update-background-btn" class="rw-btn-mini">自动更新背景</button>
+      </div>
+    </div>
       
       <!-- 新增：搜索半径和结果数量设置 -->
       <div class="rw-row" style="gap: 8px; align-items: center; margin-top: 8px;">
@@ -1137,7 +1161,8 @@ async function performSearch(keyword) {
         <input type="number" id="rw-max-results" class="rw-input" placeholder="10" style="width:80px;" min="1" max="50" value="${localStorage.getItem('rw_max_results') || 10}">
         <span>条</span>
       </div>
-    </div>
+      
+      
   `;
 
   const updateNowBtn = container.querySelector("#rw-update-now-btn");
@@ -1172,6 +1197,317 @@ async function performSearch(keyword) {
   if (savedNumber) {
     addNumberInput.value = savedNumber;
   }
+  
+  // 在 loadInjectPanel 函数中添加以下代码
+
+// 获取"立刻更新背景"按钮
+const updateBackgroundBtn = container.querySelector("#rw-update-background-btn");
+const autoUpdateBackgroundBtn = container.querySelector("#rw-auto-update-background-btn");
+
+// 第一个函数：获取时间段（昼/夜）
+function getTimeOfDay() {
+  const now = new Date();
+  const hour = now.getHours();
+  
+  // 06:00-20:00 为昼，20:00-06:00 为夜
+  if (hour >= 6 && hour < 20) {
+    return "昼";
+  } else {
+    return "夜";
+  }
+}
+
+// 第二个函数：拼接背景名
+// 第二个函数：拼接背景名
+function getBackgroundName() {
+  // 先尝试从内存缓存获取
+  let weather = weatherCache.weather;
+  
+  // 如果内存缓存为空，尝试从 localStorage 获取
+  if (!weather) {
+    const cachedData = localStorage.getItem('rw_weather_cache');
+    if (cachedData) {
+      try {
+        const parsed = JSON.parse(cachedData);
+        weatherCache = parsed;
+        weather = parsed.weather;
+        log("[RealWorld] 从 localStorage 恢复天气缓存");
+      } catch (e) {
+        log("[RealWorld] 解析天气缓存失败:", e);
+      }
+    }
+  }
+  
+  // 如果还是没有天气信息，尝试从页面元素获取
+  if (!weather) {
+    const weatherSpan = document.getElementById("rw-weather");
+    if (weatherSpan) {
+      const weatherText = weatherSpan.textContent;
+      const weatherMatch = weatherText.match(/天气：(.+)/);
+      if (weatherMatch && weatherMatch[1]) {
+        weather = weatherMatch[1].trim();
+        // 更新缓存
+        weatherCache.weather = weather;
+        localStorage.setItem('rw_weather_cache', JSON.stringify(weatherCache));
+      }
+    }
+  }
+  
+  if (!weather) {
+    log("[RealWorld] 无法获取天气信息");
+    return null;
+  }
+  
+  const timeOfDay = getTimeOfDay();
+  const backgroundName = `${timeOfDay}_${weather}`;
+  
+  log(`[RealWorld] 生成背景名: ${backgroundName}`);
+  return backgroundName;
+}
+let lastSwitchTime = 0; const SWITCH_DEBOUNCE_TIME = 500; // 500ms 内不重复执行
+// 第三个函数：切换背景
+async function switchBackground() {
+
+// 防抖检查
+  const now = Date.now();
+  if (now - lastSwitchTime < SWITCH_DEBOUNCE_TIME) {
+    log("[RealWorld] 背景切换防抖，跳过本次执行");
+    return;
+  }
+  lastSwitchTime = now;
+  const backgroundName = getBackgroundName();
+  if (!backgroundName) {
+    toastr.warning("无法获取天气信息，请先更新位置");
+    return;
+  }
+  
+  // 查找匹配的背景
+  const bgExamples = document.querySelectorAll('.bg_example');
+  let matchedBackground = null;
+  
+  for (const bgExample of bgExamples) {
+    const title = bgExample.getAttribute('title');
+    const bgSampleTitle = bgExample.querySelector('.BGSampleTitle');
+    const displayTitle = bgSampleTitle ? bgSampleTitle.textContent : '';
+    
+    // 检查标题或显示名称是否匹配
+    if (title && title.includes(backgroundName) || 
+        displayTitle && displayTitle.includes(backgroundName)) {
+      matchedBackground = bgExample;
+      break;
+    }
+  }
+  
+  if (matchedBackground) {
+    // 模拟点击切换背景
+    matchedBackground.click();
+    
+    // 如果需要锁定背景到当前聊天
+    const lockBtn = matchedBackground.querySelector('.bg_example_lock');
+    if (lockBtn) {
+      lockBtn.click();
+    }
+    
+    log(`[RealWorld] 成功切换背景到: ${backgroundName}`);
+    toastr.success(`背景已切换到: ${backgroundName}`);
+  } else {
+    log(`[RealWorld] 未找到匹配的背景: ${backgroundName}`);
+    toastr.warning(`未找到匹配的背景: ${backgroundName}`);
+  }
+}
+
+// 绑定"立刻更新背景"按钮点击事件
+if (updateBackgroundBtn) {
+  updateBackgroundBtn.addEventListener("click", async () => {
+    try {
+      await switchBackground();
+    } catch (error) {
+      console.error("[RealWorld] 切换背景时出错:", error);
+      toastr.error("切换背景失败");
+    }
+  });
+}
+
+// 在 loadInjectPanel 函数中修改自动更新背景相关的代码
+
+// 自动更新背景相关变量
+let autoUpdateBackgroundActive = false;
+let backgroundUpdateObserver = null;
+let lastBackgroundUpdateCount = 0;
+let expectedBackgroundUpdateCount = 0;
+const AUTO_BG_MODE_KEY = 'rw_auto_update_background_mode';
+
+// 切换自动更新背景状态
+function toggleAutoUpdateBackground(forceState) {
+  autoUpdateBackgroundActive = typeof forceState === 'boolean' ? forceState : !autoUpdateBackgroundActive;
+  localStorage.setItem(AUTO_BG_MODE_KEY, autoUpdateBackgroundActive ? '1' : '0');
+  
+  autoUpdateBackgroundBtn.textContent = autoUpdateBackgroundActive ? "停止自动更新" : "自动更新背景";
+  autoUpdateBackgroundBtn.style.backgroundColor = autoUpdateBackgroundActive ? "#f44336" : "";
+  
+  if (autoUpdateBackgroundActive) {
+    log("[RealWorld] 自动更新背景模式已开启");
+    
+    // 立刻更新一次背景
+    switchBackground();
+    
+    // 获取当前消息数
+    const ctx = globalThis.SillyTavern.getContext();
+    lastBackgroundUpdateCount = ctx?.chat?.length || 0;
+    const addValue = parseInt(addNumberInput.value) || 0;
+    expectedBackgroundUpdateCount = lastBackgroundUpdateCount + addValue;
+    
+    log(`[RealWorld] 背景更新 - 当前消息数: ${lastBackgroundUpdateCount}, 预计更新于: ${expectedBackgroundUpdateCount}`);
+    
+    // 设置观察器
+    backgroundUpdateObserver = new MutationObserver((mutations) => {
+      setTimeout(() => {
+        const ctx = globalThis.SillyTavern.getContext();
+        if (!ctx || !Array.isArray(ctx.chat)) {
+          return;
+        }
+        
+        const currentCount = ctx.chat.length;
+        
+        // 检测到新消息
+        if (currentCount > lastBackgroundUpdateCount) {
+          const newMsg = ctx.chat[currentCount - 1];
+          lastBackgroundUpdateCount = currentCount;
+          
+          // 检查是否是AI消息
+          const isAIMessage = newMsg && (
+            newMsg.is_user === false || 
+            newMsg.is_name === false ||
+            (!newMsg.is_user && !newMsg.is_system) ||
+            (newMsg.name && newMsg.name !== 'You' && newMsg.name !== ctx.name1)
+          ) && newMsg.mes;
+          
+          if (isAIMessage) {
+            log(`[RealWorld] 检测到新AI消息，当前: ${currentCount}, 预计背景更新于: ${expectedBackgroundUpdateCount}`);
+            
+            // 检查是否达到预计消息数
+            if (currentCount >= expectedBackgroundUpdateCount) {
+              log("[RealWorld] 达到预计消息数，更新背景");
+              
+              // 更新背景
+              switchBackground();
+              
+              // 重新计算下一个预计消息数
+              const addValue = parseInt(addNumberInput.value) || 0;
+              expectedBackgroundUpdateCount = currentCount + addValue;
+              log(`[RealWorld] 背景已更新，下次预计更新于消息数: ${expectedBackgroundUpdateCount}`);
+            }
+          }
+        }
+      }, 100);
+    });
+    
+    // 监听聊天容器
+    const containers = [
+      document.getElementById('chat'),
+      document.querySelector('#chat'),
+      document.querySelector('.chat-container'),
+      document.querySelector('[id*="chat"]')
+    ].filter(Boolean);
+    
+    if (containers.length > 0) {
+      const targetContainer = containers[0];
+      backgroundUpdateObserver.observe(targetContainer, {
+        childList: true,
+        subtree: true,
+        attributes: true,
+        attributeFilter: ['class', 'data-*']
+      });
+      
+      // 启动备用的定时检查
+      startBackgroundIntervalCheck();
+    } else {
+      console.error('[RealWorld] 未找到聊天容器，背景自动更新可能无法正常工作');
+    }
+    
+  } else {
+    log("[RealWorld] 自动更新背景模式已关闭");
+    if (backgroundUpdateObserver) {
+      backgroundUpdateObserver.disconnect();
+      backgroundUpdateObserver = null;
+    }
+    if (backgroundCheckInterval) {
+      clearInterval(backgroundCheckInterval);
+      backgroundCheckInterval = null;
+    }
+  }
+}
+
+// 备用的定时检查机制
+let backgroundCheckInterval = null;
+
+function startBackgroundIntervalCheck() {
+  if (backgroundCheckInterval) clearInterval(backgroundCheckInterval);
+  
+  backgroundCheckInterval = setInterval(() => {
+    if (!autoUpdateBackgroundActive) {
+      clearInterval(backgroundCheckInterval);
+      return;
+    }
+    
+    const ctx = globalThis.SillyTavern.getContext();
+    if (!ctx || !Array.isArray(ctx.chat)) return;
+    
+    const currentCount = ctx.chat.length;
+    
+    if (currentCount > lastBackgroundUpdateCount) {
+      log(`[RealWorld] (背景定时检查) 消息数变化: ${lastBackgroundUpdateCount} -> ${currentCount}`);
+      lastBackgroundUpdateCount = currentCount;
+      
+      if (currentCount >= expectedBackgroundUpdateCount) {
+        log("[RealWorld] (背景定时检查) 达到预计消息数，更新背景");
+        switchBackground();
+        
+        const addValue = parseInt(addNumberInput.value) || 0;
+        expectedBackgroundUpdateCount = currentCount + addValue;
+      }
+    }
+  }, 1000);
+}
+
+// 绑定按钮事件
+if (updateBackgroundBtn) {
+  updateBackgroundBtn.addEventListener("click", async () => {
+    try {
+      await switchBackground();
+    } catch (error) {
+      console.error("[RealWorld] 切换背景时出错:", error);
+      toastr.error("切换背景失败");
+    }
+  });
+}
+
+if (autoUpdateBackgroundBtn) {
+  autoUpdateBackgroundBtn.addEventListener("click", () => toggleAutoUpdateBackground());
+}
+
+// 页面加载时读取持久化的自动更新背景状态
+const savedAutoBgMode = localStorage.getItem(AUTO_BG_MODE_KEY);
+if (savedAutoBgMode === '1') {
+  // 延迟一下确保页面元素都已加载
+  setTimeout(() => {
+    toggleAutoUpdateBackground(true);
+  }, 1000);
+}
+
+// 当输入数字改变时，如果背景自动更新开启，也要更新预计消息数
+const originalInputHandler = addNumberInput.oninput;
+addNumberInput.addEventListener("input", () => {
+  if (originalInputHandler) originalInputHandler();
+  
+  if (autoUpdateBackgroundActive) {
+    const ctx = globalThis.SillyTavern.getContext();
+    const currentCount = ctx?.chat?.length || 0;
+    const addValue = parseInt(addNumberInput.value) || 0;
+    expectedBackgroundUpdateCount = currentCount + addValue;
+    log(`[RealWorld] 背景更新预计消息数已更新为: ${expectedBackgroundUpdateCount}`);
+  }
+});
 
   // === 立刻更新世界书的逻辑（保留原有内容） ===
   async function updateWorldLocationEntry() {
